@@ -11,6 +11,7 @@ Release history up to the fork point is archived in the upstream repo's
 
 ### Changed
 
+- docs: acknowledgments table with live star badges; attribution fixes (headroom source, frontend deps)
 - Release sections carry the `v` prefix (`## [v1.0.0]`), matching what the
   release workflow's notes extraction and the dashboard changelog both expect;
   the pending-fragment splice now lands under this Unreleased heading instead

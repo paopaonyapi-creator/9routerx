@@ -48,7 +48,7 @@ Same idea as [9Router](https://github.com/decolua/9router), minus the Node.js ru
 
 ## 🧭 What's different from 9Router / 9router-go?
 
-9RouterX is a fork of [9router-go](https://github.com/luqman-v1/9router-go) (luqman-v1), which is itself a Go port of [9Router](https://github.com/decolua/9router) — full credit and attribution live in [Credits](#credits) and [ATTRIBUTION.md](ATTRIBUTION.md). On top of that lineage, 9RouterX adds:
+9RouterX is a fork of [9router-go](https://github.com/luqman-v1/9router-go) (luqman-v1), which is itself a Go port of [9Router](https://github.com/decolua/9router) — full credit and attribution live in [Acknowledgments](#-acknowledgments) and [ATTRIBUTION.md](ATTRIBUTION.md). On top of that lineage, 9RouterX adds:
 
 - **Single Go binary, zero runtime deps** — proxy APIs + Svelte 5 dashboard embedded in one executable; no Node.js process to keep alive.
 - **Per-key governance** — daily cost ceilings with hard cutoff, request limits, IP whitelists, per-key system prompts, endpoint permissions, and reusable plan templates you can stamp onto many keys.
@@ -544,12 +544,24 @@ Repository references:
 - [`CHANGELOG.md`](CHANGELOG.md) — release history. Work merged since the last tag lives in `.changes/` fragments and is folded in at the next release; the dashboard's changelog modal shows both. Check what you are running with `9routerx version`.
 - [`docs/TELEGRAM_RELEASE_NOTIFICATIONS.md`](docs/TELEGRAM_RELEASE_NOTIFICATIONS.md) — one-time setup for the release notice posted to Telegram
 
-## Credits
+## 🙏 Acknowledgments
 
-- [9Router](https://github.com/decolua/9router) — original Next.js gateway & dashboard this Go port preserves compatibility with
-- [9router-go](https://github.com/luqman-v1/9router-go) (luqman-v1) — the Go fork 9RouterX continues from; all contributors are credited on the wiki's [**Owner & Contributors**](https://yanstd888.github.io/9routerx/team.html) page
-- [serenhope/9router](https://github.com/serenhope/9router) (serenhope) — source of the per-key governance, token-saver suite, security log, web executors, and several dashboard features ported into 9RouterX
-- [OmniRoute](https://github.com/cheaper-inference/OmniRoute) (cheaper-inference) — source of the SSRF guard + PII masking, routing strategies, circuit breaker, GCF compression, multi-target webhooks, and Tremor-style data-viz patterns
+| Repository | Stars | Contribution to 9RouterX |
+|---|---|---|
+| [decolua/9router](https://github.com/decolua/9router) | ![stars](https://img.shields.io/github/stars/decolua/9router?style=social) | the original Next.js gateway & dashboard that 9RouterX preserves compatibility with (same SQLite data dir, no-migration upgrade path) |
+| [luqman-v1/9router-go](https://github.com/luqman-v1/9router-go) | ![stars](https://img.shields.io/github/stars/luqman-v1/9router-go?style=social) | the Go + Svelte port 9RouterX continues from; gateway core, provider lanes, CLI |
+| [serenhope/9router](https://github.com/serenhope/9router) | ![stars](https://img.shields.io/github/stars/serenhope/9router?style=social) | per-key governance, token-saver suite, security log, web executors, dashboard features ported into 9RouterX |
+| [cheaper-inference/OmniRoute](https://github.com/cheaper-inference/OmniRoute) | ![stars](https://img.shields.io/github/stars/cheaper-inference/OmniRoute?style=social) | SSRF dispatch guard + PII masking, routing strategies, circuit breaker, multi-target webhooks, Tremor-style data-viz patterns |
+| [router-for-me/CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) | ![stars](https://img.shields.io/github/stars/router-for-me/CLIProxyAPI?style=social) | Kiro `external_idp` auth JSON importer (port of their auth format, see `internal/handlers/oauth/kiro_external_idp.go`) |
+| [rtk-ai/rtk](https://github.com/rtk-ai/rtk) | ![stars](https://img.shields.io/github/stars/rtk-ai/rtk?style=social) | the request-side token-compression concept behind the RTK Token Saver (20-40% input savings) |
+| [headroomlabs-ai/headroom](https://github.com/headroomlabs-ai/headroom) | ![stars](https://img.shields.io/github/stars/headroomlabs-ai/headroom?style=social) | GCF/tabular compression concepts ported into `internal/compression/gcf` and `internal/headroom` |
+| [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) | ![stars](https://img.shields.io/github/stars/JuliusBrussee/caveman?style=social) | the terse-output style directive (Caveman mode, `internal/tokensaver/caveman.go`) |
+| [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) | ![stars](https://img.shields.io/github/stars/DietrichGebert/ponytail?style=social) | the structured-output style directive (Ponytail mode) |
+| [ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd) | ![stars](https://img.shields.io/github/stars/ayghri/i-have-adhd?style=social) | the scannable/bulleted output style (ADHD mode) |
+| [miqdadbadjuber/anti-slop](https://github.com/miqdadbadjuber/anti-slop) | ![stars](https://img.shields.io/github/stars/miqdadbadjuber/anti-slop?style=social) | antislop injector rules bundled in `internal/tokensaver/antislop` with their original text and attribution preserved |
+| [huntabyte/shadcn-svelte](https://github.com/huntabyte/shadcn-svelte) | ![stars](https://img.shields.io/github/stars/huntabyte/shadcn-svelte?style=social) | the dashboard component layer (chart, table, tooltip, separator via bits-ui + layerchart) |
+
+9RouterX stands on this lineage — thank you to the upstream maintainers and their communities for the gateway, the port, and the ideas this project builds on. The complete three-layer ownership inventory (inherited / ported / original) lives in [ATTRIBUTION.md](ATTRIBUTION.md), and everyone whose commit landed in the repository is credited on the wiki's [**Owner & Contributors**](https://yanstd888.github.io/9routerx/team.html) page.
 
 ## 📄 License
 

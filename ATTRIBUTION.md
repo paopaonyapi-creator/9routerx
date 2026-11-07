@@ -35,7 +35,7 @@ appears:
 | Free-tier catalog page | OmniRoute concept | `web/src/lib/freeTierCatalog.ts`, `web/src/components/FreeTierView.svelte` |
 | Routing strategies: cache-optimized (rendezvous), auto (5-factor), quota-weighted, reset-aware | OmniRoute circuitBreaker/accountFallback concepts | `internal/routing/`, `internal/handlers/chat/strategy_omniroute.go` |
 | 3-tier circuit breaker | OmniRoute concept + resilience upgrade | `internal/resilience/` |
-| Headroom GCF tabular compression + output styles (terse/less-code) | OmniRoute headroom compression | `internal/compression/gcf/` |
+| Headroom GCF tabular compression + output styles (terse/less-code) | headroomlabs-ai/headroom — ported via the OmniRoute integration | `internal/compression/gcf/` |
 | Telegram webhook + team/tenant cost centers | OmniRoute webhooks/teams concepts | `internal/webhooks/telegram.go`, `internal/teams/` |
 | Web executors (chatgpt-web, gemini-web DOM capture/browser lease, deepseek-web PoW, muse-web) | serenhope/9router patterns | `internal/proxy/executor/*_web*.go` |
 | A2A protocol surface | Public A2A spec (Agent-to-Agent protocol) | `internal/a2a/` |
@@ -70,6 +70,7 @@ Major dependencies carried by this distribution, each under its own license:
 | github.com/go-chi/chi/v5 | MIT | HTTP routing |
 | modernc.org/sqlite | MIT (BSD-derived) | Pure-Go SQLite driver |
 | github.com/go-co-op/gocron, spf13/viper, other go.sum entries | see go.sum | utilities |
+| shadcn-svelte (+ bits-ui, layerchart) | MIT | Dashboard component layer: chart, table, tooltip, separator |
 
 Node dependencies of the dashboard are documented in `web/package.json` and
 carry their own licenses (MIT/Apache-2.0/ISC in the main).

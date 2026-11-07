@@ -1322,7 +1322,7 @@ f6e5d4c3b2a1   redis:7-alpine "docker-entrypoint.s…"   2 hours ago     Up 2 ho
           <p class="font-medium">
             Compress context{' '}
             <a
-              href="https://github.com/chopratejas/headroom"
+              href="https://github.com/headroomlabs-ai/headroom"
               target="_blank"
               rel="noreferrer"
               class="text-xs font-normal text-primary underline hover:opacity-80"
