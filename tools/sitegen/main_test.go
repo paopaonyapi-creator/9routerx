@@ -229,3 +229,84 @@ func readFile(t *testing.T, path string) string {
 	}
 	return string(data)
 }
+
+// copyIcons feeds the favicon links and the og:image meta both templates emit,
+// so every listed icon must land in the output — and a missing one must fail
+// the build, not skip quietly behind a site-wide 404.
+func TestCopyIcons(t *testing.T) {
+	root := t.TempDir()
+	icons := filepath.Join(root, "web", "public")
+	if err := os.MkdirAll(icons, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	for _, name := range brandIcons {
+		writeFixture(t, filepath.Join(icons, name), "icon-bytes-"+name)
+	}
+
+	out := filepath.Join(root, "_site")
+	if err := copyIcons(icons, out); err != nil {
+		t.Fatalf("copyIcons: %v", err)
+	}
+	for _, name := range brandIcons {
+		got := readFile(t, filepath.Join(out, name))
+		if got != "icon-bytes-"+name {
+			t.Errorf("%s was not copied verbatim", name)
+		}
+	}
+
+	// One icon short of the set — say, a rename in web/public that did not
+	// reach the generator — must stop the build with the file named.
+	if err := os.Remove(filepath.Join(icons, "logo-9routerx.png")); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	err := copyIcons(icons, filepath.Join(root, "_site-2"))
+	if err == nil {
+		t.Fatal("copyIcons() succeeded with a missing icon, want an error")
+	}
+	if !strings.Contains(err.Error(), "logo-9routerx.png") {
+		t.Errorf("error does not name the missing icon: %v", err)
+	}
+}
+
+// The page chrome carries the brand: real icon files (not the retired inline
+// SVG data URI, which crawlers never picked up), an absolute og:image, and the
+// wiki door ahead of the GitHub links, with the footer's wiki quick links
+// pointing at pages the wiki actually publishes.
+func TestPageTemplateChrome(t *testing.T) {
+	if strings.Contains(pageTemplate, "data:image/svg") {
+		t.Error("the page still carries the hardcoded SVG data-URI favicon")
+	}
+	for _, want := range []string{
+		`<link rel="icon" href="favicon.ico" sizes="32x32" />`,
+		`<link rel="icon" type="image/png" href="favicon-32x32.png" />`,
+		`<link rel="apple-touch-icon" href="apple-touch-icon.png" />`,
+	} {
+		if !strings.Contains(pageTemplate, want) {
+			t.Errorf("page head is missing the favicon link %q", want)
+		}
+	}
+	if !strings.Contains(pageTemplate, `og:image" content="`+ogImageURL+`"`) {
+		t.Errorf("page head is missing og:image with the absolute logo URL %s", ogImageURL)
+	}
+
+	wikiAt := strings.Index(pageTemplate, `href="installation.html">Wiki</a>`)
+	repoAt := strings.Index(pageTemplate, `>Repository</a>`)
+	if wikiAt < 0 {
+		t.Fatal("the nav has no Wiki link; the 20-page wiki has no door from the homepage")
+	}
+	if repoAt < 0 {
+		t.Fatal("the nav has no Repository link")
+	}
+	if wikiAt > repoAt {
+		t.Error("the Wiki link is not before Repository in the nav")
+	}
+
+	// The footer's wiki row is a shortcut into the documentation, so every
+	// entry must name a page the wiki generator actually publishes — the same
+	// set the pages.yml dead-link assert walks after a build.
+	for _, slug := range []string{"installation", "providers", "token-saver", "dashboard", "cli", "security"} {
+		if !strings.Contains(pageTemplate, `href="`+slug+`.html"`) {
+			t.Errorf("the footer wiki row is missing %s.html", slug)
+		}
+	}
+}

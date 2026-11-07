@@ -48,6 +48,17 @@ func main() {
 	repo := flag.String("repo", "yanstd888/9routerx", "owner/name used to resolve relative repository links")
 	flag.Parse()
 
+	// The brand icons ship before anything renders, because both templates link
+	// them from every page: a missing icon would publish a site whose favicon
+	// and og:image 404 everywhere at once. Failing the build here — not
+	// skipping quietly — is what keeps the Pages output from drifting into a
+	// half-branded site when a rename in web/public lands without a template
+	// change.
+	if err := copyIcons(webPublicDir, *outDir); err != nil {
+		fmt.Fprintln(os.Stderr, "sitegen:", err)
+		os.Exit(1)
+	}
+
 	// The wiki renders BEFORE the README so the README homepage wins
 	// index.html. Both write that name — wiki/index.md renders with the slug
 	// "index" — and the Pages workflow's contract is that the project page is
@@ -258,6 +269,45 @@ func copyFile(src, dest string) error {
 		return fmt.Errorf("read %s: %w", src, err)
 	}
 	return writeFile(dest, data)
+}
+
+// webPublicDir is where the brand icons live in the repository: next to the
+// dashboard, whose own <head> links the same files. The path is relative
+// because both the Pages workflow and a local render run the generator from
+// the repository root.
+const webPublicDir = "web/public"
+
+// brandIcons is every icon file the published site carries. Three are linked
+// by the favicon block both templates emit, logo-9routerx.png is the og:image
+// on every page, and the rest exist so a browser or a crawler that asks for
+// the sizes the favicon spec names (16, 180, 192, 512) finds a real file
+// rather than a 404 in the crawler's log.
+var brandIcons = []string{
+	"favicon.ico",
+	"favicon-16x16.png",
+	"favicon-32x32.png",
+	"apple-touch-icon.png",
+	"android-chrome-192x192.png",
+	"android-chrome-512x512.png",
+	"logo-9routerx.png",
+}
+
+// copyIcons copies each brand icon into the site root, where the templates'
+// relative favicon and og:image references resolve. A missing icon is a hard
+// error naming the file, never a skip: the favicon links ship on every page,
+// so a silent skip would publish a site-wide broken reference and fail
+// nothing until a crawler hit it.
+func copyIcons(iconsDir, outDir string) error {
+	for _, name := range brandIcons {
+		src := filepath.Join(iconsDir, name)
+		if _, err := os.Stat(src); err != nil {
+			return fmt.Errorf("brand icon %s is missing from %s: %w", name, iconsDir, err)
+		}
+		if err := copyFile(src, filepath.Join(outDir, name)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func writeFile(dest string, data []byte) error {

@@ -896,3 +896,28 @@ func TestAnchorIDMatchesGoldmarkOutput(t *testing.T) {
 		t.Errorf("index anchor does not match published id %q", publishedID)
 	}
 }
+
+// The wiki chrome carries the same brand as the project page: real icon files
+// (the inline SVG data URI was never picked up by crawlers), the absolute
+// og:image, and a nav link to the homepage that says "Home" — the wordmark
+// points there too, but carries no name a reader or a screen reader can grab.
+func TestWikiTemplateChrome(t *testing.T) {
+	if strings.Contains(wikiTemplate, "data:image/svg") {
+		t.Error("the wiki still carries the hardcoded SVG data-URI favicon")
+	}
+	for _, want := range []string{
+		`<link rel="icon" href="favicon.ico" sizes="32x32" />`,
+		`<link rel="icon" type="image/png" href="favicon-32x32.png" />`,
+		`<link rel="apple-touch-icon" href="apple-touch-icon.png" />`,
+	} {
+		if !strings.Contains(wikiTemplate, want) {
+			t.Errorf("wiki head is missing the favicon link %q", want)
+		}
+	}
+	if !strings.Contains(wikiTemplate, `og:image" content="`+ogImageURL+`"`) {
+		t.Errorf("wiki head is missing og:image with the absolute logo URL %s", ogImageURL)
+	}
+	if !strings.Contains(wikiTemplate, `href="index.html">Home</a>`) {
+		t.Error("the wiki nav has no labeled Home link to the project page")
+	}
+}

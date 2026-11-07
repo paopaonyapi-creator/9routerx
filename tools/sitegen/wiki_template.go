@@ -64,8 +64,16 @@ const wikiTemplate = `<!doctype html>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ .Page.Title }} — 9routerx Wiki</title>
     <meta name="description" content="9routerx documentation: {{ .Page.Title }}" />
-    <link rel="stylesheet" href="style.css" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23e56a4a'/%3E%3Ctext x='16' y='23' font-family='system-ui,sans-serif' font-size='19' font-weight='700' fill='%23fff' text-anchor='middle'%3E9%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="style.css" />` + `
+    <!-- The real icon files copied from web/public (see copyIcons in main.go),
+         in the order Google's favicon guidelines ask for — same block as the
+         project page, so both halves of the site carry one identity. The
+         previous inline SVG data URI was never picked up by crawlers; an .ico
+         at the site root is. -->
+    <link rel="icon" href="favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/png" href="favicon-32x32.png" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <meta property="og:image" content="` + ogImageURL + `" />
     <script>
       // Apply the stored theme before the first paint. Without this the page
       // renders in whatever the OS prefers and then repaints a moment later,
@@ -629,11 +637,22 @@ const wikiTemplate = `<!doctype html>
           <span class="wiki-menu-icon" aria-hidden="true">☰</span>
         </button>
         <a class="wordmark" href="index.html">
-          <span class="wordmark-mark" aria-hidden="true">9</span>
+          <!-- Brand blue instead of the stylesheet's terracotta: the plate is
+               the one place the site's own palette disagrees with the product
+               identity (web/public/favicon.ico and the dashboard chrome are
+               blue), and style.css is shared with pages this template does not
+               render, so the override is inline rather than a stylesheet edit.
+               Same override as the project page, so the wordmark reads as one
+               mark across the whole site. -->
+          <span class="wordmark-mark" aria-hidden="true" style="background:#2079F5">9</span>
           <span>9routerx</span>
         </a>
         <nav aria-label="Project" id="project-links">
-          <a href="index.html">Project</a>
+          <!-- Labeled "Home" rather than "Project": the wordmark goes to the
+               same page but carries no name a screen reader can announce as a
+               destination, and a visitor who landed deep in the wiki needs a
+               link that says where it leads. -->
+          <a href="index.html">Home</a>
           <a href="https://github.com/{{ .Repo }}">Repository</a>
           <a href="tg">Telegram group</a>
           <!-- The theme switcher lives in this sheet on a phone, where the bar
