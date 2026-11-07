@@ -133,6 +133,57 @@ endpoint answers 200 with the last cache and `stale: true`, the cause is
 classified (`not_found`, `timeout`, `parse`, `rate_limited`, `dns`,
 `network`) into the structured log, the check record, and `/api/update/debug`.
 
+## 6. Rollback procedure (release drill — Bagian B §5.5)
+
+How to pull a bad release off every channel. Order matters: the manifest is
+what existing installs poll, so it goes last so users are not offered a
+version that no longer exists anywhere.
+
+**1. GitHub Release + tag** (the binary/self-update channel):
+
+```sh
+gh release delete vX.Y.Z --repo yanstd888/9routerx --cleanup-tag --yes
+```
+
+`--cleanup-tag` removes the git tag with it (equivalently
+`git push --delete origin vX.Y.Z`). After deletion the Releases API fallback
+404s — the client degrades silently (`stale: true`, no banner), which is the
+desired "no update offered" state.
+
+**2. Rewind the manifest** (`version.json` on `main` is what
+`9routerx update` and the banner poll first — deleting the release does not
+touch it):
+
+```sh
+./scripts/bump-version.sh <previous-stable>   # then commit + push to main
+```
+
+Until this is pushed, every install still sees the bad version as "latest"
+from raw.githubusercontent.com even though its release page is gone — never
+skip this step.
+
+**3. npm** (wrapper `9routerx` + platform packages
+`@yanstd888/9routerx-<os>-<arch>`):
+
+- Within 72h of publish: `npm unpublish --force <pkg>@<version>` per package.
+  After an unpublish, npm blocks republishing the same version for 24h —
+  roll the version instead of retrying the same number.
+- Past the 72h window unpublish is refused by npm policy: deprecate instead —
+  `npm deprecate <pkg>@<version> "broken; upgrade to X.Y.Z"`. Deprecation
+  surfaces a warning on install and keeps `npm i -g 9routerx@latest` working.
+- The wrapper pins its `optionalDependencies` to exact versions, so a broken
+  platform package is fixed by publishing `<patch+1>` of that one package and
+  a wrapper release pinning it — no need to unpublish anything.
+
+**4. Docker** (`yanstd88/9routerx`): tags are mutable — rebuild from the
+previous good tag and push to overwrite `:latest`/`:1.Y`/`:1.Y.Z`
+(the release workflow's docker job does this on any re-tag), or delete the
+single bad tag in Docker Hub → Tags.
+
+**Drill record:** the test release (`v0.0.0-test.1` pattern, spec §5.1/§5.5)
+is deleted the same way after E2E passes: `gh release delete --cleanup-tag`,
+manifest untouched (test versions never enter `version.json`).
+
 ---
 
 *Bagian A (this repo): channel detection, check scheduler, banner UI, debug

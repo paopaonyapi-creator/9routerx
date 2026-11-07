@@ -1,15 +1,32 @@
 # 9RouterX npm distribution (TASK-9routerX-updater-B §3).
-# Platform binaries are wrapped as scoped packages under the maintainer's npm
-# account (scope resolved at publish time via `npm whoami` — unscoped
-# dash-heavy names trigger npm's spam detection). The main `9routerx` wrapper
-# declares them as optionalDependencies (the esbuild/turbo pattern — no
-# postinstall downloads) and its launcher resolves the right one at runtime.
+#
+# Platform binaries are wrapped as SCOPED packages under the maintainer's npm
+# account: `@<npmuser>/9routerx-<os>-<arch>`, with <npmuser> resolved at
+# publish time via `npm whoami` (never hard-coded — the account owns the
+# scope, and scoped names under the publishing account bypass npm's spam
+# detection, which E403'd the unscoped dash-heavy names on the first 1.0.0
+# attempt). The main `9routerx` wrapper declares them as optionalDependencies
+# (the esbuild/turbo pattern — no postinstall downloads) and its bin launcher
+# resolves the right one at runtime, execs it with `9ROUTERX_NPM_INSTALL=1`
+# so the Go binary classifies the install as the npm channel
+# (internal/updater/channel.go, docs/updater-contract.md §4).
+#
+# Publish is IDEMPOTENT: before each `npm publish` the registry is queried
+# (`npm view <name>@<version> version`); if it answers, the step skips —
+# re-runs against an already-published version never hit E409.
+#
 # NODE_AUTH_TOKEN comes from the repo secret (granular token, no OTP).
+# Credential presence is probed in a step and surfaced via GITHUB_OUTPUT —
+# secrets must never be referenced inside an `if:` (GitHub rejects the
+# workflow file at load time), so publish steps gate on the probe output and
+# the whole job runs green (everything skipped) when no token is configured.
 name: npm-publish
 
 # Fires on release publication (the release workflow attaches the binaries
 # first — publishing in parallel raced the asset upload). Manual dispatch for
-# re-runs against an existing tag's release.
+# re-runs against an existing tag's release: `gh workflow run npm-publish.yml
+# --ref vX.Y.Z` (a tag ref — the version and the downloaded assets both come
+# from that tag's release).
 on:
   release:
     types: [published]
@@ -36,18 +53,51 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org/
+
       - name: Download release binary for this platform
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release download "${GITHUB_REF_NAME}" --pattern "9routerx-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}*" --clobber
           ls -la
-      - name: Assemble platform package
+
+      # Probe, don't gate on `secrets.` inside `if:` (unrecognized named-value
+      # at workflow load). One `npm whoami` resolves both the credential
+      # question and the scope every name below needs.
+      - name: Resolve npm identity (whoami) and probe credentials
+        id: creds
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
-          VERSION: ${{ github.ref_name }}
         run: |
-          SCOPE="$(npm whoami)"
+          set -euo pipefail
+          SCOPE=""
+          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
+            SCOPE="$(npm whoami 2>/dev/null || true)"
+          else
+            echo "NODE_AUTH_TOKEN is not configured on this repo."
+          fi
+          if [ -n "$SCOPE" ]; then
+            echo "has_creds=true" >> "$GITHUB_OUTPUT"
+            echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
+            echo "npm identity: @$SCOPE (npm whoami ok)"
+          else
+            echo "has_creds=false" >> "$GITHUB_OUTPUT"
+            echo "scope=" >> "$GITHUB_OUTPUT"
+            echo "::warning::npm credentials unavailable (NODE_AUTH_TOKEN missing or npm whoami failed) — assembly and publish will be skipped."
+          fi
+
+      - name: Assemble platform package
+        if: steps.creds.outputs.has_creds == 'true'
+        env:
+          VERSION_INPUT: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          SCOPE="${{ steps.creds.outputs.scope }}"
+          VERSION="${VERSION_INPUT#v}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+            echo "::error::ref ${VERSION_INPUT} does not yield an npm semver version (${VERSION}). Dispatch with --ref vX.Y.Z."
+            exit 1
+          fi
           PKGDIR="pkg/@${SCOPE}/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
           mkdir -p "${PKGDIR}/bin"
           BIN="9routerx${{ matrix.ext }}"
@@ -57,18 +107,31 @@ jobs:
             chmod +x "9routerx-${{ matrix.os }}-${{ matrix.arch }}"
             cp "9routerx-${{ matrix.os }}-${{ matrix.arch }}" "${PKGDIR}/bin/${BIN}"
           fi
-          SCOPE="${SCOPE}" node -e "
+          SCOPE="${SCOPE}" VERSION="${VERSION}" node -e "
             const p = { name: '@' + process.env.SCOPE + '/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}', version: process.env.VERSION, description: '9RouterX binary (${{ matrix.os }}/${{ matrix.arch }})', os: ['${{ matrix.npm_os }}'], cpu: ['${{ matrix.npm_arch }}'], license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', files: ['bin'], publishConfig: { access: 'public' } };
-            require('fs').writeFileSync('${PKGDIR}/package.json', JSON.stringify(p, null, 2));
+            require('fs').writeFileSync('${PKGDIR}/package.json', JSON.stringify(p, null, 2) + '\n');
           "
-      - name: Publish platform package
-        if: ${{ secrets.NODE_AUTH_TOKEN != '' }}
+          cat "${PKGDIR}/package.json"
+
+      - name: Publish platform package (idempotent)
+        if: steps.creds.outputs.has_creds == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+          VERSION_INPUT: ${{ github.ref_name }}
         run: |
-          cd "pkg/@$(npm whoami)/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
+          set -euo pipefail
+          SCOPE="${{ steps.creds.outputs.scope }}"
+          NAME="@${SCOPE}/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
+          VERSION="${VERSION_INPUT#v}"
+          cd "pkg/@${SCOPE}/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
+          if npm view "${NAME}@${VERSION}" version 2>/dev/null; then
+            echo "::notice::${NAME}@${VERSION} is already on the registry — skipping publish (idempotent re-run, no E409)."
+            exit 0
+          fi
+          echo "Publishing ${NAME}@${VERSION} (dry-run proof first):"
           npm publish --dry-run
           npm publish --access public
+          echo "Published ${NAME}@${VERSION}."
 
   wrapper:
     needs: platforms
@@ -79,33 +142,113 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org/
-      - name: Assemble + publish main wrapper package
+
+      - name: Resolve npm identity (whoami) and probe credentials
+        id: creds
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
-          VERSION: ${{ github.ref_name }}
         run: |
-          SCOPE="$(npm whoami)"
+          set -euo pipefail
+          SCOPE=""
+          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then
+            SCOPE="$(npm whoami 2>/dev/null || true)"
+          else
+            echo "NODE_AUTH_TOKEN is not configured on this repo."
+          fi
+          if [ -n "$SCOPE" ]; then
+            echo "has_creds=true" >> "$GITHUB_OUTPUT"
+            echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
+            echo "npm identity: @$SCOPE (npm whoami ok)"
+          else
+            echo "has_creds=false" >> "$GITHUB_OUTPUT"
+            echo "scope=" >> "$GITHUB_OUTPUT"
+            echo "::warning::npm credentials unavailable (NODE_AUTH_TOKEN missing or npm whoami failed) — assembly and publish will be skipped."
+          fi
+
+      - name: Assemble main wrapper package
+        if: steps.creds.outputs.has_creds == 'true'
+        env:
+          VERSION_INPUT: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          SCOPE="${{ steps.creds.outputs.scope }}"
+          VERSION="${VERSION_INPUT#v}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+            echo "::error::ref ${VERSION_INPUT} does not yield an npm semver version (${VERSION}). Dispatch with --ref vX.Y.Z."
+            exit 1
+          fi
           mkdir -p pkg/9routerx/bin
-          SCOPE="${SCOPE}" VERSION="${VERSION}" node -e "
+          SCOPE="${SCOPE}" VERSION="${VERSION}" node -e '
             const scope = process.env.SCOPE;
             const v = process.env.VERSION;
-            const plat = (os, a) => '@' + scope + '/9routerx-' + os + '-' + a;
-            const p = { name: '9routerx', version: v, description: '9RouterX — 9R Next Go Generation: local AI gateway (installs the right platform binary)', bin: { 9routerx: 'bin/launcher.js' }, optionalDependencies: { [plat('win32','x64')]: v, [plat('linux','x64')]: v, [plat('linux','arm64')]: v, [plat('darwin','x64')]: v, [plat('darwin','arm64')]: v }, license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', keywords: ['ai','gateway','router','llm','proxy'], engines: { node: '>=18' }, publishConfig: { access: 'public' } };
-            require('fs').writeFileSync('pkg/9routerx/package.json', JSON.stringify(p, null, 2));
-            const fs = require('fs');
-            fs.writeFileSync('pkg/9routerx/bin/launcher.js', [
-              '#!/usr/bin/env node',
-              \"const { platform, arch } = process;\",
-              \"const map = { win32: { x64: 'win32-x64', arm64: 'win32-arm64' }, linux: { x64: 'linux-x64', arm64: 'linux-arm64' }, darwin: { x64: 'darwin-x64', arm64: 'darwin-arm64' } };\",
-              \"const t = (map[platform] || {})[arch];\",
-              \"if (!t) { console.error('9RouterX: unsupported platform ' + platform + '/' + arch); process.exit(1); }\",
-              \"const ext = platform === 'win32' ? '.exe' : '';\",
-              \"const { spawnSync } = require('child_process');\",
-              \"const r = spawnSync(require.resolve('\" + '@' + scope + \"/' + '9routerx-' + t + '/bin/9routerx' + ext), process.argv.slice(2), { stdio: 'inherit' });\",
-              \"process.exit(r.status || 0);\",
-              ''
-            ].join('\n'));
-          "
+            const plat = (os, a) => "@" + scope + "/9routerx-" + os + "-" + a;
+            const p = { name: "9routerx", version: v, description: "9RouterX — 9R Next Go Generation: local AI gateway (installs the right platform binary)", bin: { "9routerx": "bin/launcher.js" }, optionalDependencies: { [plat("win32", "x64")]: v, [plat("linux", "x64")]: v, [plat("linux", "arm64")]: v, [plat("darwin", "x64")]: v, [plat("darwin", "arm64")]: v }, license: "MIT", repository: { type: "git", url: "git+https://github.com/yanstd888/9routerx.git" }, author: "Muhammad Dian (yanstd888)", keywords: ["ai", "gateway", "router", "llm", "proxy"], engines: { node: ">=18" }, publishConfig: { access: "public" } };
+            require("fs").writeFileSync("pkg/9routerx/package.json", JSON.stringify(p, null, 2) + "\n");
+          '
+          # The launcher embeds the scope resolved above (@NPM_SCOPE@) so it
+          # can resolve the platform binary package installed as an
+          # optionalDependency, and sets 9ROUTERX_NPM_INSTALL=1 — the marker
+          # the Go updater reads to classify this install as the npm channel
+          # (docs/updater-contract.md §4; the key is quoted because a leading
+          # digit is not a valid JS identifier).
+          cat > pkg/9routerx/bin/launcher.js <<'EOF'
+          #!/usr/bin/env node
+          'use strict';
+          const { platform, arch } = process;
+          const map = {
+            win32: { x64: 'win32-x64', arm64: 'win32-arm64' },
+            linux: { x64: 'linux-x64', arm64: 'linux-arm64' },
+            darwin: { x64: 'darwin-x64', arm64: 'darwin-arm64' },
+          };
+          const t = (map[platform] || {})[arch];
+          if (!t) {
+            console.error('9RouterX: unsupported platform ' + platform + '/' + arch);
+            process.exit(1);
+          }
+          const pkg = '@NPM_SCOPE@/9routerx-' + t;
+          const ext = platform === 'win32' ? '.exe' : '';
+          let bin;
+          try {
+            const root = require.resolve(pkg + '/package.json');
+            bin = require('path').join(require('path').dirname(root), 'bin', '9routerx' + ext);
+          } catch (err) {
+            console.error('9RouterX: the platform binary package ' + pkg + ' was not installed (' + (err.code || err.message) + ').');
+            console.error('Reinstall with: npm i -g 9routerx');
+            process.exit(1);
+          }
+          const { spawnSync } = require('child_process');
+          const r = spawnSync(bin, process.argv.slice(2), {
+            stdio: 'inherit',
+            env: Object.assign({}, process.env, { '9ROUTERX_NPM_INSTALL': '1' }),
+          });
+          if (r.error) {
+            console.error('9RouterX: failed to launch ' + bin + ' (' + r.error.message + ').');
+            process.exit(1);
+          }
+          process.exit(r.status === null ? 1 : r.status);
+          EOF
+          sed -i "s/@NPM_SCOPE@/@${SCOPE}/" pkg/9routerx/bin/launcher.js
+          node --check pkg/9routerx/bin/launcher.js
+          echo "--- launcher.js ---"
+          cat pkg/9routerx/bin/launcher.js
+          echo "--- package.json ---"
+          cat pkg/9routerx/package.json
+
+      - name: Publish main wrapper package (idempotent)
+        if: steps.creds.outputs.has_creds == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+          VERSION_INPUT: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          NAME="9routerx"
+          VERSION="${VERSION_INPUT#v}"
           cd pkg/9routerx
+          if npm view "${NAME}@${VERSION}" version 2>/dev/null; then
+            echo "::notice::${NAME}@${VERSION} is already on the registry — skipping publish (idempotent re-run, no E409)."
+            exit 0
+          fi
+          echo "Publishing ${NAME}@${VERSION} (dry-run proof first):"
           npm publish --dry-run
           npm publish --access public
+          echo "Published ${NAME}@${VERSION}."
