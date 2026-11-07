@@ -109,3 +109,33 @@ audit-screens-mobile/
 # Updater banner audit screenshots (local only)
 /audit-screens-updater/
 /audit-screens-readme/
+
+# Stray test databases anywhere in the tree (belt-and-braces: the data dirs
+# above cover the usual locations; these catch SQLite sidecar files that land
+# elsewhere during a test run)
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Coverage / profiling output
+coverage.*
+*.prof
+
+# Editor backup files
+*.bak
+*.orig
+*~
+
+# OS & Office noise
+Thumbs.db
+desktop.ini
+nul
+~$*
+
+# Local caches & scratch dirs
+.cache/
+tmp/
+__pycache__/
+.pytest_cache/
