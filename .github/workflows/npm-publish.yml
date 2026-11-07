@@ -24,13 +24,23 @@ name: npm-publish
 
 # Fires on release publication (the release workflow attaches the binaries
 # first — publishing in parallel raced the asset upload). Manual dispatch for
-# re-runs against an existing tag's release: `gh workflow run npm-publish.yml
-# --ref vX.Y.Z` (a tag ref — the version and the downloaded assets both come
-# from that tag's release).
+# re-runs against an existing tag's release. IMPORTANT: Actions executes the
+# workflow FILE at the dispatch ref, so dispatch from the branch that carries
+# this file and name the release tag in the input:
+#   gh workflow run npm-publish.yml --ref main -f tag=vX.Y.Z
+# (dispatching --ref vX.Y.Z would run the workflow as it was AT that tag,
+# which predates this rewrite). Without the input the ref the workflow runs
+# on is used — that covers the release:published trigger and dispatch-on-tag.
 on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. v1.0.0). Empty = the ref the workflow runs on.'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -38,6 +48,10 @@ permissions:
 jobs:
   platforms:
     runs-on: ubuntu-latest
+    env:
+      # The release tag the binaries come from and the version everything is
+      # published under (leading v stripped in the steps below).
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     strategy:
       fail-fast: false
       matrix:
@@ -58,7 +72,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download "${GITHUB_REF_NAME}" --pattern "9routerx-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}*" --clobber
+          gh release download "${RELEASE_TAG}" --pattern "9routerx-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}*" --clobber
           ls -la
 
       # Probe, don't gate on `secrets.` inside `if:` (unrecognized named-value
@@ -88,14 +102,12 @@ jobs:
 
       - name: Assemble platform package
         if: steps.creds.outputs.has_creds == 'true'
-        env:
-          VERSION_INPUT: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           SCOPE="${{ steps.creds.outputs.scope }}"
-          VERSION="${VERSION_INPUT#v}"
+          VERSION="${RELEASE_TAG#v}"
           if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
-            echo "::error::ref ${VERSION_INPUT} does not yield an npm semver version (${VERSION}). Dispatch with --ref vX.Y.Z."
+            echo "::error::tag ${RELEASE_TAG} does not yield an npm semver version (${VERSION}). Dispatch with -f tag=vX.Y.Z."
             exit 1
           fi
           PKGDIR="pkg/@${SCOPE}/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
@@ -117,12 +129,11 @@ jobs:
         if: steps.creds.outputs.has_creds == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
-          VERSION_INPUT: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           SCOPE="${{ steps.creds.outputs.scope }}"
           NAME="@${SCOPE}/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
-          VERSION="${VERSION_INPUT#v}"
+          VERSION="${RELEASE_TAG#v}"
           cd "pkg/@${SCOPE}/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
           if npm view "${NAME}@${VERSION}" version 2>/dev/null; then
             echo "::notice::${NAME}@${VERSION} is already on the registry — skipping publish (idempotent re-run, no E409)."
@@ -136,6 +147,8 @@ jobs:
   wrapper:
     needs: platforms
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -167,14 +180,12 @@ jobs:
 
       - name: Assemble main wrapper package
         if: steps.creds.outputs.has_creds == 'true'
-        env:
-          VERSION_INPUT: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           SCOPE="${{ steps.creds.outputs.scope }}"
-          VERSION="${VERSION_INPUT#v}"
+          VERSION="${RELEASE_TAG#v}"
           if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
-            echo "::error::ref ${VERSION_INPUT} does not yield an npm semver version (${VERSION}). Dispatch with --ref vX.Y.Z."
+            echo "::error::tag ${RELEASE_TAG} does not yield an npm semver version (${VERSION}). Dispatch with -f tag=vX.Y.Z."
             exit 1
           fi
           mkdir -p pkg/9routerx/bin
@@ -238,11 +249,10 @@ jobs:
         if: steps.creds.outputs.has_creds == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
-          VERSION_INPUT: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           NAME="9routerx"
-          VERSION="${VERSION_INPUT#v}"
+          VERSION="${RELEASE_TAG#v}"
           cd pkg/9routerx
           if npm view "${NAME}@${VERSION}" version 2>/dev/null; then
             echo "::notice::${NAME}@${VERSION} is already on the registry — skipping publish (idempotent re-run, no E409)."
