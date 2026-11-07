@@ -62,8 +62,17 @@ const wikiTemplate = `<!doctype html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{{ .Page.Title }} — 9routerx Wiki</title>
-    <meta name="description" content="9routerx documentation: {{ .Page.Title }}" />
+    <title>{{ .Page.Title }} — 9RouterX Wiki</title>
+    <meta name="description" content="9RouterX documentation: {{ .Page.Title }}" />
+    <!-- The dashboard's glyph pairing (web/src/index.css): Manrope for display
+         and body, Geist Mono for code and technical labels. Same link block as
+         the project page, so both halves of the site load one set of faces. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&family=Manrope:wght@200..800&display=swap"
+    />
     <link rel="stylesheet" href="style.css" />` + `
     <!-- The real icon files copied from web/public (see copyIcons in main.go),
          in the order Google's favicon guidelines ask for — same block as the
@@ -637,15 +646,16 @@ const wikiTemplate = `<!doctype html>
           <span class="wiki-menu-icon" aria-hidden="true">☰</span>
         </button>
         <a class="wordmark" href="index.html">
-          <!-- Brand blue instead of the stylesheet's terracotta: the plate is
-               the one place the site's own palette disagrees with the product
-               identity (web/public/favicon.ico and the dashboard chrome are
-               blue), and style.css is shared with pages this template does not
-               render, so the override is inline rather than a stylesheet edit.
-               Same override as the project page, so the wordmark reads as one
-               mark across the whole site. -->
-          <span class="wordmark-mark" aria-hidden="true" style="background:#2079F5">9</span>
-          <span>9routerx</span>
+          <!-- The real logo (site/logo-9routerx-128.png, the 128px resize of
+               web/public/logo-9routerx.png) inside a solid dark tile — same
+               mark as the project page, so the wordmark reads as one brand
+               across the whole site. The asset's background is transparent and
+               the tile stays dark in BOTH themes, the way the dashboard
+               presents the mark on its dark panel. -->
+          <span class="wordmark-mark" aria-hidden="true"
+            ><img src="logo-9routerx-128.png" alt="" width="128" height="128" loading="lazy" decoding="async"
+          /></span>
+          <span>9RouterX</span>
         </a>
         <nav aria-label="Project" id="project-links">
           <!-- Labeled "Home" rather than "Project": the wordmark goes to the
@@ -654,6 +664,7 @@ const wikiTemplate = `<!doctype html>
                link that says where it leads. -->
           <a href="index.html">Home</a>
           <a href="https://github.com/{{ .Repo }}">Repository</a>
+          <a href="https://github.com/{{ .Repo }}/releases">Releases</a>
           <a href="tg">Telegram group</a>
           <!-- The theme switcher lives in this sheet on a phone, where the bar
                already carries the nav trigger and this toggle beside the
@@ -919,7 +930,17 @@ const wikiTemplate = `<!doctype html>
         if (!barBtn && !sheetBtn) return;
 
         function current() {
-          return document.documentElement.classList.contains("dark") ? "dark" : "light";
+          var classes = document.documentElement.classList;
+          if (classes.contains("dark")) return "dark";
+          if (classes.contains("light")) return "light";
+          // No class means no stored choice: the stylesheet decides, and its
+          // cascade is "dark :root default, OS-light media query overrides".
+          // Reading that order here is what keeps the icon honest on the
+          // first visit — a click must always switch away from what the
+          // reader is actually looking at, never re-apply it.
+          return window.matchMedia("(prefers-color-scheme: light)").matches
+            ? "light"
+            : "dark";
         }
         function paint() {
           var dark = current() === "dark";

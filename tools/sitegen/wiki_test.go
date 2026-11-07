@@ -376,8 +376,11 @@ func TestThemeSwitcherUsesTheDashboardContract(t *testing.T) {
 		}
 	}
 	// The automatic preference must stay the default; the class rules override
-	// it, not replace it.
-	if !strings.Contains(projectCSS, "prefers-color-scheme: dark") {
+	// it, not replace it. Since the dashboard-consistent redesign, dark is the
+	// stylesheet's :root identity (the dashboard ships dark-first), so the
+	// automatic query is the LIGHT one: a reader whose OS prefers light gets
+	// the glyph light palette without clicking anything.
+	if !strings.Contains(projectCSS, "prefers-color-scheme: light") {
 		t.Error("the OS-preference media query is gone: readers who never click get no automatic theme")
 	}
 
@@ -427,6 +430,14 @@ func TestThemeSwitcherUsesTheDashboardContract(t *testing.T) {
 	// The icon must be re-painted, or it keeps pointing at the wrong theme.
 	if !strings.Contains(body, "paint();") {
 		t.Error("the toggle never repaints its own icon")
+	}
+	// With no stored choice the toggle must read the stylesheet's effective
+	// theme — dark :root default, OS-light media query override — so the first
+	// click always switches away from what the reader sees. current() that
+	// assumes "no class = light" would make the first click a no-op on a
+	// dark-default site.
+	if !strings.Contains(body, `matchMedia("(prefers-color-scheme: light)")`) {
+		t.Error("the toggle does not resolve the unclassed theme through the OS-preference query")
 	}
 }
 
@@ -919,5 +930,27 @@ func TestWikiTemplateChrome(t *testing.T) {
 	}
 	if !strings.Contains(wikiTemplate, `href="index.html">Home</a>`) {
 		t.Error("the wiki nav has no labeled Home link to the project page")
+	}
+	// Same brand as the project page: the real 128px logo in the masthead and
+	// the capitalized wordmark — no colored-letter plate, no lowercase name.
+	if !strings.Contains(wikiTemplate, `src="logo-9routerx-128.png"`) {
+		t.Error("the wiki masthead does not use the real 128px logo asset")
+	}
+	if !strings.Contains(wikiTemplate, `<span>9RouterX</span>`) {
+		t.Error("the wiki wordmark text is not the capitalized brand spelling 9RouterX")
+	}
+	if strings.Contains(wikiTemplate, `wordmark-mark" style="background:`) {
+		t.Error("the wiki masthead still carries the colored-letter plate instead of the logo")
+	}
+	// The lazy+sized contract pages.yml enforces on every <img> applies to the
+	// masthead logo on all 20 wiki pages too.
+	logoAt := strings.Index(wikiTemplate, `src="logo-9routerx-128.png"`)
+	if logoAt < 0 {
+		t.Fatal("the wiki masthead has no logo")
+	}
+	logoEnd := strings.Index(wikiTemplate[logoAt:], ">")
+	logoTag := wikiTemplate[logoAt : logoAt+logoEnd]
+	if !strings.Contains(logoTag, `loading="lazy"`) || !strings.Contains(logoTag, `width="128"`) || !strings.Contains(logoTag, `height="128"`) {
+		t.Errorf("the wiki masthead logo is not lazy and sized: %s", logoTag)
 	}
 }

@@ -149,6 +149,7 @@ func TestGenerate(t *testing.T) {
 	}
 	writeFixture(t, filepath.Join(assets, "style.css"), "body{}")
 	writeFixture(t, filepath.Join(assets, "tg.html"), "<a href=\"tg\">tg</a>")
+	writeFixture(t, filepath.Join(assets, "logo-9routerx-128.png"), "logo-bytes")
 
 	shot := filepath.Join(root, "docs", "screenshots", "providers.png")
 	if err := os.MkdirAll(filepath.Dir(shot), 0o755); err != nil {
@@ -157,7 +158,9 @@ func TestGenerate(t *testing.T) {
 	writeFixture(t, shot, "png-bytes")
 
 	out := filepath.Join(root, "_site")
-	if err := generate(readme, assets, out, "yanstd888/9routerx"); err != nil {
+	// Non-zero stats: the hero must render the numbers it is given, so the
+	// live-numbers strip is exercised here with known values.
+	if err := generate(readme, assets, out, "yanstd888/9routerx", heroStats{Version: "9.9.9", Providers: 123, WikiPages: 7}); err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 
@@ -166,6 +169,7 @@ func TestGenerate(t *testing.T) {
 		"style.css",
 		"tg.html",
 		"tg/index.html",
+		"logo-9routerx-128.png",
 		filepath.FromSlash("docs/screenshots/providers.png"),
 	} {
 		if _, err := os.Stat(filepath.Join(out, rel)); err != nil {
@@ -186,8 +190,30 @@ func TestGenerate(t *testing.T) {
 		}
 	}
 
-	if strings.Contains(page, "https://github.com/decolua") {
+	// Absolute links inside the README body must pass through unrewritten.
+	// The check is scoped to the rendered README article because the page
+	// chrome's own footer legitimately links to the upstream repositories
+	// (the attribution line), and those are supposed to stay absolute. The
+	// closing tag search starts after bodyStart: the hero's feature cards
+	// are <article> elements too, and Index would otherwise find theirs.
+	bodyStart := strings.Index(page, `<article id="readme"`)
+	if bodyStart < 0 {
+		t.Fatal("index.html has no README article to check")
+	}
+	bodyEnd := bodyStart + strings.Index(page[bodyStart:], "</article>")
+	if bodyEnd <= bodyStart {
+		t.Fatal("the README article is never closed")
+	}
+	if strings.Contains(page[bodyStart:bodyEnd], "https://github.com/decolua") {
 		t.Error("absolute link was rewritten")
+	}
+
+	// The hero renders the stats it was handed — and nothing else. These are
+	// the fixture's numbers, proving the strip comes from data, not markup.
+	for _, want := range []string{"<dd>123</dd>", "<dd>7</dd>", "<dd>v9.9.9</dd>"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html is missing the hero stat %q", want)
+		}
 	}
 }
 
@@ -204,8 +230,9 @@ func TestGenerateFailsOnMissingImage(t *testing.T) {
 	}
 	writeFixture(t, filepath.Join(assets, "style.css"), "body{}")
 	writeFixture(t, filepath.Join(assets, "tg.html"), "<a></a>")
+	writeFixture(t, filepath.Join(assets, "logo-9routerx-128.png"), "logo-bytes")
 
-	err := generate(readme, assets, filepath.Join(root, "_site"), "yanstd888/9routerx")
+	err := generate(readme, assets, filepath.Join(root, "_site"), "yanstd888/9routerx", heroStats{})
 	if err == nil {
 		t.Fatal("generate() succeeded with a missing image, want an error")
 	}
@@ -269,9 +296,12 @@ func TestCopyIcons(t *testing.T) {
 }
 
 // The page chrome carries the brand: real icon files (not the retired inline
-// SVG data URI, which crawlers never picked up), an absolute og:image, and the
-// wiki door ahead of the GitHub links, with the footer's wiki quick links
-// pointing at pages the wiki actually publishes.
+// SVG data URI, which crawlers never picked up), an absolute og:image, the
+// real 128px logo in the masthead (the retired blue "9" plate is gone), and
+// the wiki door ahead of the GitHub links, with the footer's links pointing
+// at pages the wiki actually publishes. The hero's contracts are here too:
+// the scramble headline, the copy button, the lazy-sized screenshot, and the
+// reduced-motion stand-down.
 func TestPageTemplateChrome(t *testing.T) {
 	if strings.Contains(pageTemplate, "data:image/svg") {
 		t.Error("the page still carries the hardcoded SVG data-URI favicon")
@@ -287,6 +317,21 @@ func TestPageTemplateChrome(t *testing.T) {
 	}
 	if !strings.Contains(pageTemplate, `og:image" content="`+ogImageURL+`"`) {
 		t.Errorf("page head is missing og:image with the absolute logo URL %s", ogImageURL)
+	}
+
+	// Title and wordmark carry the brand spelling: "9RouterX", capital R and
+	// capital X — the owner's original complaint was the lowercase wordmark.
+	if !strings.Contains(pageTemplate, "<title>9RouterX — ") {
+		t.Errorf("the document title does not start with the brand spelling: %q", "9RouterX — ")
+	}
+	if !strings.Contains(pageTemplate, `<span>9RouterX</span>`) {
+		t.Error("the wordmark text is not the capitalized brand spelling 9RouterX")
+	}
+	if !strings.Contains(pageTemplate, `src="logo-9routerx-128.png"`) {
+		t.Error("the masthead does not use the real 128px logo asset")
+	}
+	if strings.Contains(pageTemplate, `wordmark-mark" style="background:`) {
+		t.Error("the masthead still carries the colored-letter plate instead of the logo")
 	}
 
 	wikiAt := strings.Index(pageTemplate, `href="installation.html">Wiki</a>`)
@@ -308,5 +353,109 @@ func TestPageTemplateChrome(t *testing.T) {
 		if !strings.Contains(pageTemplate, `href="`+slug+`.html"`) {
 			t.Errorf("the footer wiki row is missing %s.html", slug)
 		}
+	}
+
+	// Hero contracts. The headline decode, the copy button, and the
+	// reduced-motion stand-down are behaviour pages.yml cannot see from
+	// static output — they live only in the template, so the template is what
+	// the assertions guard.
+	for _, want := range []string{
+		`id="hero-title"`,        // the decode target
+		`prefers-reduced-motion`, // every effect stands down
+		`id="copy-install"`,      // the install block's copy button
+		`id="install-cmd"`,       // the typed command
+		`class="hero-chips"`,     // the feature chip strip
+		`class="hero-stats"`,     // the live-numbers strip
+		`class="hero-shot"`,      // the framed dashboard screenshot
+		`src="docs/screenshots/providers.png"`,
+	} {
+		if !strings.Contains(pageTemplate, want) {
+			t.Errorf("the page template is missing the hero contract %q", want)
+		}
+	}
+
+	// The hero screenshot obeys the same lazy+sized contract the README
+	// gallery is held to by pages.yml.
+	shot := strings.Index(pageTemplate, `src="docs/screenshots/providers.png"`)
+	if shot < 0 {
+		t.Fatal("the hero has no screenshot")
+	}
+	tagEnd := strings.Index(pageTemplate[shot:], ">")
+	tag := pageTemplate[shot : shot+tagEnd]
+	if !strings.Contains(tag, `loading="lazy"`) || !strings.Contains(tag, `width="1280"`) || !strings.Contains(tag, `height="800"`) {
+		t.Errorf("the hero screenshot is not lazy and sized: %s", tag)
+	}
+
+	// The masthead logo obeys it too — the lazy assert in pages.yml counts
+	// every <img> on every page, masthead included.
+	logoAt := strings.Index(pageTemplate, `src="logo-9routerx-128.png"`)
+	if logoAt < 0 {
+		t.Fatal("the masthead has no logo")
+	}
+	logoEnd := strings.Index(pageTemplate[logoAt:], ">")
+	logoTag := pageTemplate[logoAt : logoAt+logoEnd]
+	if !strings.Contains(logoTag, `loading="lazy"`) || !strings.Contains(logoTag, `width="128"`) || !strings.Contains(logoTag, `height="128"`) {
+		t.Errorf("the masthead logo is not lazy and sized: %s", logoTag)
+	}
+
+	// The hero numbers come from build-time data, never from markup: every
+	// stat the template renders is guarded by an `if` on the Stats field, so
+	// a build that cannot compute a number omits it instead of inventing one.
+	for _, want := range []string{`{{ if .Stats.Providers }}`, `{{ if .Stats.WikiPages }}`, `{{ if .Stats.Version }}`} {
+		if !strings.Contains(pageTemplate, want) {
+			t.Errorf("the hero stats are not guarded by %q — the hero could render a number the build did not compute", want)
+		}
+	}
+	if strings.Contains(pageTemplate, "<dd>140</dd>") || strings.Contains(pageTemplate, "<dd>20</dd>") {
+		t.Error("the template hardcodes a provider or wiki count in the markup")
+	}
+}
+
+// The hero's provider count is a line scan over the generated registry, so it
+// is tested against a fixture with known contents — including the traps the
+// scan must not fall into (nested string arrays, the HiddenKinds field, the
+// last entry being hidden).
+func TestCountProvidersIn(t *testing.T) {
+	// Interpreted string literal on purpose: the scan depends on real tab
+	// indentation, which a raw literal would not carry.
+	fixture := "package providers\n" +
+		"\n" +
+		"var ProviderRegistry = map[string]ProviderMeta{\n" +
+		"\t\"agnes\": {\n" +
+		"\t\tID:       \"agnes\",\n" +
+		"\t\tName:     \"Agnes\",\n" +
+		"\t\tCategory: CategoryAPIKey,\n" +
+		"\t},\n" +
+		"\t\"gitlab\": {\n" +
+		"\t\tID:          \"gitlab\",\n" +
+		"\t\tName:        \"GitLab\",\n" +
+		"\t\tCategory:    CategoryAPIKey,\n" +
+		"\t\tHidden:      true,\n" +
+		"\t\tHiddenKinds: []string{\"chat\"},\n" +
+		"\t},\n" +
+		"\t\"selfhosted-stt\": {\n" +
+		"\t\tID:           \"selfhosted-stt\",\n" +
+		"\t\tName:         \"Self-Hosted STT\",\n" +
+		"\t\tCategory:     CategoryAPIKey,\n" +
+		"\t\tServiceKinds: []string{\"stt\"},\n" +
+		"\t},\n" +
+		"}\n"
+	if got := countProvidersIn([]byte(fixture)); got != 2 {
+		t.Errorf("countProvidersIn = %d, want 2 (3 entries, 1 hidden)", got)
+	}
+}
+
+// countWikiPages must mirror generateWiki's published set exactly: every
+// wiki/*.md except index.md, whose slug belongs to the README homepage.
+func TestCountWikiPages(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"installation.md", "cli.md", "index.md", "team.md"} {
+		writeFixture(t, filepath.Join(root, name), "# x")
+	}
+	if got := countWikiPages(root); got != 3 {
+		t.Errorf("countWikiPages = %d, want 3 (4 files, index.md unpublished)", got)
+	}
+	if got := countWikiPages(filepath.Join(root, "missing")); got != 0 {
+		t.Errorf("countWikiPages on a missing dir = %d, want 0", got)
 	}
 }
