@@ -17,7 +17,7 @@ env:
   # the old account is impossible without its credentials. The Docker Hub repo
   # must exist before the first post-rebrand release runs (create it once on
   # hub.docker.com; the workflow pushes :latest/:exp/:version tags there).
-  REGISTRY_IMAGE: yanstd888/9routerx
+  REGISTRY_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/9routerx
 
 jobs:
   # The release channel is derived from the tag and nothing else — not the
