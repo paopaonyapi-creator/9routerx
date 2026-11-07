@@ -4,9 +4,13 @@
 # comes from the repo secret (user creates a granular npm token manually).
 name: npm-publish
 
+# Triggers on release publication (NOT tag push): the release workflow builds
+# and attaches the binaries first — publishing in parallel raced the asset
+# upload and the download step 404'd. Manual dispatch stays available for
+# re-runs against an existing tag's release.
 on:
-  push:
-    tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
