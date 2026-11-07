@@ -95,6 +95,14 @@ Result: Never stop coding, minimal cost + 20-40% token savings via RTK
 **1. Install (one line):**
 
 ```bash
+npm install -g 9routerx
+```
+
+> The npm launcher installs the right binary for your OS automatically (Windows, macOS Intel/Apple Silicon, Linux x64/ARM64). Requires Node.js **>= 18**; the gateway binary itself is a single Go executable with no runtime dependencies.
+
+**Alternative — script installer (same binaries):**
+
+```bash
 # macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/yanstd888/9routerx/main/install.sh | bash
 ```
@@ -255,7 +263,7 @@ Stop 9Router, start 9routerx, and log in with your existing password. Your provi
 
 ```bash
 # 9Router on :20128 (Next.js)  ·  9routerx on :888 (Go, same DB)
-PORT=888 DATA_DIR=/home/you/.9router ./9routerx
+PORT=888 DATA_DIR=/home/you/.9router 9routerx
 ```
 
 Both read the same tables, so a connection you add in either dashboard shows up in the other. SQLite serialises the writes; the supported setup is one active writer, so avoid editing the same combo or settings entry in both at the same moment.
@@ -299,6 +307,11 @@ Mobile layouts reflow the same pages behind a navigation sheet — see
 
 ## ⚙️ Setup Guide
 
+### Requirements
+
+- **npm install**: Node.js **>= 18** (`engines.node` of the `9routerx` package). The launcher installs the right binary for your OS automatically; the gateway binary itself is a single Go executable with no runtime dependencies.
+- **Supported platforms**: Windows x64, macOS Intel (x64), macOS Apple Silicon (arm64), Linux x64, Linux ARM64 — the five `@yanstd888/9routerx-<os>-<arch>` platform packages (`optionalDependencies`).
+
 ### Release binary
 
 Download from [GitHub Releases](https://github.com/yanstd888/9routerx/releases/latest), verify against `SHA256SUMS.txt`.
@@ -339,16 +352,16 @@ Defaults are enough for most people — plain `9routerx` listens on port `888` w
 ```bash
 9routerx
 curl http://localhost:888/health
-./9routerx version
+9routerx version
 ```
 
 Only override when you need something different (`PORT`, `DATA_DIR`/`DB_PATH` — there are no `--port` flags):
 
 ```bash
-PORT=20129 ./9routerx                        # different port
-DATA_DIR=/srv/9router ./9routerx              # different data dir
-DB_PATH=/srv/9router/data.sqlite ./9routerx   # explicit SQLite file
-HOST=127.0.0.1 ./9routerx                     # localhost only, behind a reverse proxy
+PORT=20129 9routerx                        # different port
+DATA_DIR=/srv/9router 9routerx              # different data dir
+DB_PATH=/srv/9router/data.sqlite 9routerx   # explicit SQLite file
+HOST=127.0.0.1 9routerx                     # localhost only, behind a reverse proxy
 ```
 
 ### 🔑 Dashboard Login & Fresh Install
@@ -357,7 +370,7 @@ HOST=127.0.0.1 ./9routerx                     # localhost only, behind a reverse
 - **Remote / VPS / Docker / LAN**: For security (preventing public takeover of fresh installs with known defaults, CVE-2026-56679), remote access blocks the default `123456` password. You **must** either:
   1. **Set `INITIAL_PASSWORD` on launch (Recommended)**:
      ```bash
-     INITIAL_PASSWORD="your-secure-password" ./9routerx
+     INITIAL_PASSWORD="your-secure-password" 9routerx
      # Or in your .env file:
      # INITIAL_PASSWORD=your-secure-password
      ```

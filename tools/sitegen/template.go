@@ -231,13 +231,17 @@ const pageTemplate = `<!doctype html>
 
           <!-- The primary element: the README's own install line, typed once on
                load and wired to a copy button. The full command is in the
-               markup, so no-JS readers and search engines see it either way. -->
+               markup, so no-JS readers and search engines see it either way.
+               npm is the primary path everywhere (README, wiki, this landing):
+               the launcher fetches the right platform binary by itself; the
+               script installers and Docker stay as alternatives in the
+               quickstart below. -->
           <div class="hero-install">
             <div class="install-head">
-              <span class="install-label">Install &mdash; macOS / Linux</span>
+              <span class="install-label">Install &mdash; npm (any OS)</span>
               <button class="install-copy" id="copy-install" type="button">Copy</button>
             </div>
-            <pre><code id="install-cmd" data-cmd="curl -fsSL https://raw.githubusercontent.com/yanstd888/9routerx/main/install.sh | bash">curl -fsSL https://raw.githubusercontent.com/yanstd888/9routerx/main/install.sh | bash</code><span class="install-caret" aria-hidden="true"></span></pre>
+            <pre><code id="install-cmd" data-cmd="npm install -g 9routerx">npm install -g 9routerx</code><span class="install-caret" aria-hidden="true"></span></pre>
           </div>
 
           <p class="hero-actions">
@@ -359,18 +363,25 @@ const pageTemplate = `<!doctype html>
             <li class="step">
               <h3>Install</h3>
               <p>
-                One line on macOS and Linux. Windows PowerShell:
-                <code>irm .../install.ps1 | iex</code>. Or Docker, below.
+                One line, any OS &mdash; npm installs the right binary for your platform
+                automatically (Windows, macOS Intel/Apple Silicon, Linux x64/ARM64). Requires
+                Node.js 18+; the gateway binary itself has no runtime dependencies.
               </p>
               <div class="codeblock">
                 <div class="install-head">
-                  <span class="install-label">shell</span>
+                  <span class="install-label">npm &mdash; any OS</span>
+                </div>
+                <pre><code>npm install -g 9routerx</code></pre>
+              </div>
+              <div class="codeblock">
+                <div class="install-head">
+                  <span class="install-label">alternative &mdash; script installer (same binaries)</span>
                 </div>
                 <pre><code>curl -fsSL https://raw.githubusercontent.com/yanstd888/9routerx/main/install.sh | bash</code></pre>
               </div>
               <div class="codeblock">
                 <div class="install-head">
-                  <span class="install-label">docker</span>
+                  <span class="install-label">alternative &mdash; container</span>
                 </div>
                 <pre><code>docker run -d --name 9routerx --restart unless-stopped \
   -p 888:888 -v "$HOME/.9router:/data" \

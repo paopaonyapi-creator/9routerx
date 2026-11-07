@@ -6,7 +6,15 @@ section: Getting Started
 
 # Installation
 
-## One line
+## npm (primary)
+
+```bash
+npm install -g 9routerx
+```
+
+The launcher installs the right binary for your OS automatically (Windows, macOS Intel/Apple Silicon, Linux x64/ARM64). Requires Node.js **>= 18**; the gateway binary itself is a single Go executable with no runtime dependencies.
+
+## Alternative — script installer (same binaries)
 
 ```bash
 # macOS / Linux
@@ -34,16 +42,16 @@ No flags required:
 ```bash
 9routerx              # run in the foreground
 curl http://localhost:888/health
-./9routerx version
+9routerx version
 ```
 
 Override only when you need something different (`PORT`, `DATA_DIR`/`DB_PATH` — there are no `--port` flags):
 
 ```bash
-PORT=20129 ./9routerx
-DATA_DIR=/srv/9router ./9routerx
-DB_PATH=/srv/9router/data.sqlite ./9routerx
-HOST=127.0.0.1 ./9routerx
+PORT=20129 9routerx
+DATA_DIR=/srv/9router 9routerx
+DB_PATH=/srv/9router/data.sqlite 9routerx
+HOST=127.0.0.1 9routerx
 ```
 
 ## Background mode
@@ -115,7 +123,7 @@ make build       # embeds VERSION into the Go binary
   password. Either:
   1. Set `INITIAL_PASSWORD` on launch (recommended):
      ```bash
-     INITIAL_PASSWORD="your-secure-password" ./9routerx
+     INITIAL_PASSWORD="your-secure-password" 9routerx
      ```
   2. Or access via SSH port-forwarding first:
      ```bash
