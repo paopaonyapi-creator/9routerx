@@ -1,12 +1,14 @@
 # 9RouterX npm distribution (TASK-9routerX-updater-B §3).
-# Wraps the release binaries per-OS via optionalDependencies (the esbuild/turbo
-# pattern — no postinstall downloads). Publishes on tag push; NODE_AUTH_TOKEN
-# comes from the repo secret (user creates a granular npm token manually).
+# Platform binaries are wrapped as scoped packages under the maintainer's npm
+# account (scope resolved at publish time via `npm whoami` — unscoped
+# dash-heavy names trigger npm's spam detection). The main `9routerx` wrapper
+# declares them as optionalDependencies (the esbuild/turbo pattern — no
+# postinstall downloads) and its launcher resolves the right one at runtime.
+# NODE_AUTH_TOKEN comes from the repo secret (granular token, no OTP).
 name: npm-publish
 
-# Triggers on release publication (NOT tag push): the release workflow builds
-# and attaches the binaries first — publishing in parallel raced the asset
-# upload and the download step 404'd. Manual dispatch stays available for
+# Fires on release publication (the release workflow attaches the binaries
+# first — publishing in parallel raced the asset upload). Manual dispatch for
 # re-runs against an existing tag's release.
 on:
   release:
@@ -18,7 +20,6 @@ permissions:
 
 jobs:
   platforms:
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -35,58 +36,41 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org/
-      # Secrets cannot be referenced from an `if` condition — GitHub rejects the
-      # whole workflow file at load time ("Unrecognized named-value: 'secrets'",
-      # which turned every push into a 0-second run with no jobs). Publish-ability
-      # is therefore probed here, where an `env:` block may read secrets, and the
-      # publish steps below gate on this output instead.
-      - name: Check npm credentials
-        id: creds
-        run: |
-          if [ -n "$NODE_AUTH_TOKEN" ]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "NODE_AUTH_TOKEN not configured; packages are assembled but not published."
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
       - name: Download release binary for this platform
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           gh release download "${GITHUB_REF_NAME}" --pattern "9routerx-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}*" --clobber
           ls -la
-        env:
-          GH_TOKEN: ${{ github.token }}
       - name: Assemble platform package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+          VERSION: ${{ github.ref_name }}
         run: |
-          # Exported so the node script reads it from process.env, and stripped
-          # of the v prefix because npm rejects the prefixed spelling as a
-          # package version.
-          export VERSION="${GITHUB_REF_NAME#v}"
-          PKGDIR="pkg/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
+          SCOPE="$(npm whoami)"
+          PKGDIR="pkg/@${SCOPE}/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
           mkdir -p "${PKGDIR}/bin"
           BIN="9routerx${{ matrix.ext }}"
-          if [ "${{ matrix.ext }}" != ".exe" ]; then
+          if [ "${{ matrix.ext }}" = ".exe" ]; then
+            cp "9routerx-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" "${PKGDIR}/bin/${BIN}"
+          else
             chmod +x "9routerx-${{ matrix.os }}-${{ matrix.arch }}"
             cp "9routerx-${{ matrix.os }}-${{ matrix.arch }}" "${PKGDIR}/bin/${BIN}"
-          else
-            cp "9routerx-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" "${PKGDIR}/bin/${BIN}"
           fi
-          node -e "
-            const p = { name: '9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}', version: process.env.VERSION, description: '9RouterX binary (${{ matrix.os }}/${{ matrix.arch }})', os: ['${{ matrix.npm_os }}'], cpu: ['${{ matrix.npm_arch }}'], license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', files: ['bin'], publishConfig: { access: 'public' } };
+          SCOPE="${SCOPE}" node -e "
+            const p = { name: '@' + process.env.SCOPE + '/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}', version: process.env.VERSION, description: '9RouterX binary (${{ matrix.os }}/${{ matrix.arch }})', os: ['${{ matrix.npm_os }}'], cpu: ['${{ matrix.npm_arch }}'], license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', files: ['bin'], publishConfig: { access: 'public' } };
             require('fs').writeFileSync('${PKGDIR}/package.json', JSON.stringify(p, null, 2));
           "
       - name: Publish platform package
-        if: steps.creds.outputs.publish == 'true'
-        run: |
-          cd "pkg/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
-          npm publish --dry-run
-          npm publish --access public
+        if: ${{ secrets.NODE_AUTH_TOKEN != '' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+        run: |
+          cd "pkg/@$(npm whoami)/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
+          npm publish --dry-run
+          npm publish --access public
 
   wrapper:
-    if: startsWith(github.ref, 'refs/tags/v')
     needs: platforms
     runs-on: ubuntu-latest
     steps:
@@ -95,29 +79,18 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org/
-      - name: Check npm credentials
-        id: creds
-        run: |
-          if [ -n "$NODE_AUTH_TOKEN" ]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "NODE_AUTH_TOKEN not configured; the wrapper is assembled but not published."
-          fi
+      - name: Assemble + publish main wrapper package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
-      - name: Assemble + publish main wrapper package
-        if: steps.creds.outputs.publish == 'true'
+          VERSION: ${{ github.ref_name }}
         run: |
-          # Exported so the node script reads it from process.env, and stripped
-          # of the v prefix because npm rejects the prefixed spelling as a
-          # package version. Every optionalDependencies entry goes through
-          # process.env.VERSION — a bare VERSION identifier here would be a
-          # ReferenceError in node, not a version string.
-          export VERSION="${GITHUB_REF_NAME#v}"
+          SCOPE="$(npm whoami)"
           mkdir -p pkg/9routerx/bin
-          node -e "
-            const p = { name: '9routerx', version: process.env.VERSION, description: '9RouterX — 9R Next Go Generation: local AI gateway (installs the right platform binary)', bin: { 9routerx: 'bin/launcher.js' }, optionalDependencies: { '9routerx-win32-x64': process.env.VERSION, '9routerx-linux-x64': process.env.VERSION, '9routerx-linux-arm64': process.env.VERSION, '9routerx-darwin-x64': process.env.VERSION, '9routerx-darwin-arm64': process.env.VERSION }, license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', keywords: ['ai','gateway','router','llm','proxy'], engines: { node: '>=18' }, publishConfig: { access: 'public' } };
+          SCOPE="${SCOPE}" VERSION="${VERSION}" node -e "
+            const scope = process.env.SCOPE;
+            const v = process.env.VERSION;
+            const plat = (os, a) => '@' + scope + '/9routerx-' + os + '-' + a;
+            const p = { name: '9routerx', version: v, description: '9RouterX — 9R Next Go Generation: local AI gateway (installs the right platform binary)', bin: { 9routerx: 'bin/launcher.js' }, optionalDependencies: { [plat('win32','x64')]: v, [plat('linux','x64')]: v, [plat('linux','arm64')]: v, [plat('darwin','x64')]: v, [plat('darwin','arm64')]: v }, license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', keywords: ['ai','gateway','router','llm','proxy'], engines: { node: '>=18' }, publishConfig: { access: 'public' } };
             require('fs').writeFileSync('pkg/9routerx/package.json', JSON.stringify(p, null, 2));
             const fs = require('fs');
             fs.writeFileSync('pkg/9routerx/bin/launcher.js', [
@@ -128,7 +101,7 @@ jobs:
               \"if (!t) { console.error('9RouterX: unsupported platform ' + platform + '/' + arch); process.exit(1); }\",
               \"const ext = platform === 'win32' ? '.exe' : '';\",
               \"const { spawnSync } = require('child_process');\",
-              \"const r = spawnSync(require.resolve('9routerx-' + t + '/bin/9routerx' + ext), process.argv.slice(2), { stdio: 'inherit' });\",
+              \"const r = spawnSync(require.resolve('\" + '@' + scope + \"/' + '9routerx-' + t + '/bin/9routerx' + ext), process.argv.slice(2), { stdio: 'inherit' });\",
               \"process.exit(r.status || 0);\",
               ''
             ].join('\n'));
@@ -136,5 +109,3 @@ jobs:
           cd pkg/9routerx
           npm publish --dry-run
           npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
