@@ -175,10 +175,10 @@ skip this step.
   platform package is fixed by publishing `<patch+1>` of that one package and
   a wrapper release pinning it — no need to unpublish anything.
 
-**4. Docker** (`yanstd88/9routerx`): tags are mutable — rebuild from the
+**4. Docker** (`ghcr.io/yanstd888/9routerx`): tags are mutable — rebuild from the
 previous good tag and push to overwrite `:latest`/`:1.Y`/`:1.Y.Z`
 (the release workflow's docker job does this on any re-tag), or delete the
-single bad tag in Docker Hub → Tags.
+single bad tag in the GitHub package page (Packages → 9routerx).
 
 **Drill record:** the test release (`v0.0.0-test.1` pattern, spec §5.1/§5.5)
 is deleted the same way after E2E passes: `gh release delete --cleanup-tag`,

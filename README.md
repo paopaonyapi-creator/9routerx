@@ -172,7 +172,7 @@ docker run -d --name 9routerx --restart unless-stopped \
   -p 888:888 -v "$HOME/.9router:/data" \
   -e PORT=888 -e DATA_DIR=/data \
   -e INITIAL_PASSWORD=your-secure-password \
-  yanstd888/9routerx:latest
+  ghcr.io/yanstd888/9routerx:latest
 
 # Manual download — pick your file, no command line guesswork:
 # Windows → .exe | Mac M1+ → darwin-arm64 | Mac Intel → darwin-amd64
@@ -309,10 +309,10 @@ separately and are never offered to a normal install:
 
 - GitHub Releases marks them **Pre-release**, so `releases/latest` — the URL
   `9routerx update` falls back to — keeps pointing at the stable version.
-- Docker Hub tags them `exp` (`yanstd888/9routerx:exp`), never `latest`.
+- GHCR tags them `exp` (`ghcr.io/yanstd888/9routerx:exp`), never `latest`.
 
 ```bash
-docker pull yanstd888/9routerx:exp
+docker pull ghcr.io/yanstd888/9routerx:exp
 ```
 
 Opt in only if you want to help shake out bugs. `9routerx update` will not

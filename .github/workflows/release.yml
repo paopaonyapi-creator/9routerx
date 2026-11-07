@@ -12,12 +12,12 @@ permissions:
   packages: write
 
 env:
-  # Docker Hub repository. The image moved with the 9RouterX rebrand from the
-  # fork's luqmenul/9routerx to the owner's yanstd888/9routerx — publishing to
-  # the old account is impossible without its credentials. The Docker Hub repo
-  # must exist before the first post-rebrand release runs (create it once on
-  # hub.docker.com; the workflow pushes :latest/:exp/:version tags there).
-  REGISTRY_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/9routerx
+  # Docker Hub repository — the OPTIONAL bonus channel. The primary container
+  # channel is GHCR (ghcr.io/<owner>/9routerx, pushed with the built-in
+  # GITHUB_TOKEN, no secrets). The image moved with the 9RouterX rebrand from
+  # the fork's luqmenul/9routerx to the owner's yanstd888/9routerx; the push
+  # below is best-effort and never reddens the workflow.
+  DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/9routerx
 
 jobs:
   # The release channel is derived from the tag and nothing else — not the
@@ -273,7 +273,7 @@ jobs:
           > explicitly:
           >
           > \`\`\`sh
-          > docker pull ${REGISTRY_IMAGE}:${GITHUB_REF_NAME#v}
+          > docker pull ghcr.io/${{ github.repository_owner }}/9routerx:${GITHUB_REF_NAME#v}
           > \`\`\`
           >
           > Issues found here are still worth reporting — but check the stable
@@ -327,15 +327,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   docker:
-    # Docker Hub credentials are optional: the job is skipped unless both
-    # DOCKERHUB_USERNAME + DOCKERHUB_TOKEN secrets are configured (probed by
-    # the channel job — secrets must never appear in an `if`, see above).
-    # GitHub release binaries + checksums do not depend on it.
-    if: startsWith(github.ref, 'refs/tags/v') && needs.channel.outputs.has_dockerhub == 'true'
+    # GHCR is the primary container channel (upstream decolua/9router parity:
+    # ghcr.io/<owner>/9routerx). It needs no secrets — the built-in GITHUB_TOKEN
+    # plus `permissions: packages: write` below always suffice, so the job is
+    # gated on the tag only, never on the has_dockerhub probe. The Docker Hub
+    # push survives as an optional bonus behind that probe, and every bonus
+    # step carries continue-on-error: true — a Hub outage or a revoked token
+    # must not turn a release red now that the mandatory channel is GHCR.
+    if: startsWith(github.ref, 'refs/tags/v')
     name: Build and push Docker image
     needs: channel
     runs-on: ubuntu-latest
     environment: prod
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -345,20 +351,24 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
+      - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
+      # The owner expression keeps the path honest: ghcr.io/yanstd888/9routerx,
+      # never a hard-coded username and never a doubled owner prefix
+      # (metadata-action leaves a fully-qualified image reference as-is).
+      - name: Extract metadata (GHCR)
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY_IMAGE }}
+          images: ghcr.io/${{ github.repository_owner }}/9routerx
           tags: ${{ needs.channel.outputs.docker_tags }}
 
-      - name: Build and push
+      - name: Build and push (GHCR)
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -366,6 +376,40 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ---- Optional Docker Hub bonus: everything below may fail ----
+
+      - name: Log in to Docker Hub (optional bonus)
+        id: hub_login
+        if: needs.channel.outputs.has_dockerhub == 'true'
+        continue-on-error: true
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract Docker Hub metadata (optional bonus)
+        id: meta_hub
+        if: needs.channel.outputs.has_dockerhub == 'true'
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.DOCKERHUB_IMAGE }}
+          tags: ${{ needs.channel.outputs.docker_tags }}
+
+      # Gated on the login outcome too: a failed Hub login should not buy a
+      # second multi-arch build that can only fail at the push.
+      - name: Build and push (Docker Hub, optional bonus)
+        if: needs.channel.outputs.has_dockerhub == 'true' && steps.hub_login.outcome == 'success'
+        continue-on-error: true
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta_hub.outputs.tags }}
+          labels: ${{ steps.meta_hub.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

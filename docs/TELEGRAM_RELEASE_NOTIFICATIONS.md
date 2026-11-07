@@ -85,7 +85,7 @@ What's new:
 … up to 10 entries
 
 Release notes: https://github.com/yanstd888/9routerx/releases/tag/v1.9.11
-    docker pull yanstd888/9routerx:1.9.11
+    docker pull ghcr.io/yanstd888/9routerx:1.9.11
 ```
 
 Only headings are listed, not their bullets: the full notes live on the
