@@ -157,8 +157,12 @@ func renderMarkdown(readmePath, outDir, repo string) ([]byte, error) {
 	}
 	// The README carries wide tables too (the environment table, the
 	// screenshot gallery), so it gets the same scroll wrappers as the wiki
-	// pages — the deploy asserts the pairing across the whole site.
-	return []byte(wrapTables(buf.String())), nil
+	// pages — the deploy asserts the pairing across the whole site. After
+	// that, injectIcons restores the section and feature markers the
+	// emoji-free markdown sources no longer carry (see icons.go): the same
+	// post-render point wrapTables runs at, on the exact markup the browser
+	// gets.
+	return []byte(injectIcons(wrapTables(buf.String()))), nil
 }
 
 // rewriteRelativeLinks points every repository-relative link at github.com and

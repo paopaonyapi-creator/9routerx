@@ -57,7 +57,11 @@ func groupBySection(pages []*page) []pageGroup {
 // generator writes next to these pages, and navigates to the matching page and
 // heading. No framework, no third-party request — the site stays on the
 // gateway's own origin, per the first-paint budget.
-const wikiTemplate = `<!doctype html>
+//
+// A var, not a const: the chrome icons (menu, theme, close, links) are spliced
+// in from icons.go, and iconSVG is a function, so the composite is not a
+// constant expression.
+var wikiTemplate = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -388,6 +392,20 @@ const wikiTemplate = `<!doctype html>
         font-size: 1.25rem;
         line-height: 1;
       }
+      /* Chrome icons: inline SVGs from icons.go (em-sized via the span). */
+      .wiki-menu-icon svg.ico,
+      .wiki-theme-icon svg.ico,
+      .wiki-links-icon svg.ico,
+      .wiki-sheet-close-icon svg.ico {
+        width: 1.15em;
+        height: 1.15em;
+        display: block;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
       .wiki-sheet-head {
         display: none;
       }
@@ -643,7 +661,7 @@ const wikiTemplate = `<!doctype html>
           aria-expanded="false"
           aria-controls="wiki-side"
         >
-          <span class="wiki-menu-icon" aria-hidden="true">☰</span>
+          <span class="wiki-menu-icon" aria-hidden="true">` + wikiMenuIcon + `</span>
         </button>
         <a class="wordmark" href="index.html">
           <!-- The real logo (site/logo-9routerx-128.png, the 128px resize of
@@ -677,7 +695,7 @@ const wikiTemplate = `<!doctype html>
             id="theme-toggle"
             aria-label="Switch to dark theme"
           >
-            <span class="wiki-theme-icon" aria-hidden="true">☾</span>
+            <span class="wiki-theme-icon" aria-hidden="true">` + wikiMoonIcon + `</span>
             <span class="wiki-theme-label">Theme</span>
           </button>
         </nav>
@@ -691,7 +709,7 @@ const wikiTemplate = `<!doctype html>
           id="theme-toggle-bar"
           aria-label="Switch to dark theme"
         >
-          <span class="wiki-theme-icon" aria-hidden="true">☾</span>
+          <span class="wiki-theme-icon" aria-hidden="true">` + wikiMoonIcon + `</span>
         </button>
         <!-- The same three links, behind one control, once the bar is too narrow
              to show them beside the nav trigger. -->
@@ -703,7 +721,7 @@ const wikiTemplate = `<!doctype html>
           aria-expanded="false"
           aria-controls="project-links"
         >
-          <span class="wiki-links-icon" aria-hidden="true">⋯</span>
+          <span class="wiki-links-icon" aria-hidden="true">` + wikiMoreIcon + `</span>
         </button>
       </div>
     </header>
@@ -721,7 +739,7 @@ const wikiTemplate = `<!doctype html>
             id="nav-close"
             aria-label="Close wiki navigation"
           >
-            <span class="wiki-sheet-close-icon" aria-hidden="true">✕</span>
+            <span class="wiki-sheet-close-icon" aria-hidden="true">` + wikiCloseIcon + `</span>
           </button>
           <strong>Wiki</strong>
         </div>
@@ -942,6 +960,9 @@ const wikiTemplate = `<!doctype html>
             ? "light"
             : "dark";
         }
+        // Theme states as inline SVG (icons.go).
+        var ICON_SUN = '` + wikiSunIcon + `';
+        var ICON_MOON = '` + wikiMoonIcon + `';
         function paint() {
           var dark = current() === "dark";
           // The icon shows the theme a click would switch TO, so it reads as an
@@ -949,7 +970,7 @@ const wikiTemplate = `<!doctype html>
           [barBtn, sheetBtn].forEach(function (btn) {
             if (!btn) return;
             var icon = btn.querySelector(".wiki-theme-icon");
-            if (icon) icon.textContent = dark ? "☀" : "☾";
+            if (icon) icon.innerHTML = dark ? ICON_SUN : ICON_MOON;
             btn.setAttribute("aria-label", dark ? "Switch to light theme" : "Switch to dark theme");
             btn.setAttribute("aria-pressed", dark ? "true" : "false");
           });

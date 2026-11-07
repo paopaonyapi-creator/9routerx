@@ -168,6 +168,44 @@ const pageTemplate = `<!doctype html>
       href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&family=Manrope:wght@200..800&display=swap"
     />
     <link rel="stylesheet" href="style.css" />` + `
+    <!-- Icon sizing for the svg.ico markers injected by icons.go. -->
+    <style>
+      .prose svg.ico {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        width: 1em;
+        height: 1em;
+        vertical-align: -0.15em;
+      }
+      .prose h2 svg.ico,
+      .prose h3 svg.ico {
+        width: 1.15em;
+        height: 1.15em;
+        vertical-align: -0.18em;
+        margin-right: 0.45em;
+      }
+      .prose a svg.ico {
+        vertical-align: -0.12em;
+        margin-right: 0.3em;
+      }
+      .prose li svg.ico {
+        margin-right: 0.4em;
+      }
+      .prose ul.md-pros,
+      .prose ul.md-cons {
+        list-style: none;
+        padding-left: 1.5rem;
+      }
+      .prose ul.md-pros svg.ico {
+        color: var(--ok);
+      }
+      .prose ul.md-cons svg.ico {
+        color: var(--err);
+      }
+    </style>` + `
     <!-- The real icon files copied from web/public (see copyIcons), in the order
          Google's favicon guidelines ask for. The previous inline SVG data URI
          was never picked up by crawlers — an .ico at the site root is. -->
