@@ -63,7 +63,7 @@ jobs:
           # of the v prefix because npm rejects the prefixed spelling as a
           # package version.
           export VERSION="${GITHUB_REF_NAME#v}"
-          PKGDIR="pkg/@9routerx/${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
+          PKGDIR="pkg/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
           mkdir -p "${PKGDIR}/bin"
           BIN="9routerx${{ matrix.ext }}"
           if [ "${{ matrix.ext }}" != ".exe" ]; then
@@ -73,13 +73,13 @@ jobs:
             cp "9routerx-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" "${PKGDIR}/bin/${BIN}"
           fi
           node -e "
-            const p = { name: '@9routerx/${{ matrix.npm_os }}-${{ matrix.npm_arch }}', version: process.env.VERSION, description: '9RouterX binary (${{ matrix.os }}/${{ matrix.arch }})', os: ['${{ matrix.npm_os }}'], cpu: ['${{ matrix.npm_arch }}'], license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', files: ['bin'], publishConfig: { access: 'public' } };
+            const p = { name: '9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}', version: process.env.VERSION, description: '9RouterX binary (${{ matrix.os }}/${{ matrix.arch }})', os: ['${{ matrix.npm_os }}'], cpu: ['${{ matrix.npm_arch }}'], license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', files: ['bin'], publishConfig: { access: 'public' } };
             require('fs').writeFileSync('${PKGDIR}/package.json', JSON.stringify(p, null, 2));
           "
       - name: Publish platform package
         if: steps.creds.outputs.publish == 'true'
         run: |
-          cd "pkg/@9routerx/${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
+          cd "pkg/9routerx-${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
           npm publish --dry-run
           npm publish --access public
         env:
@@ -117,7 +117,7 @@ jobs:
           export VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p pkg/9routerx/bin
           node -e "
-            const p = { name: '9routerx', version: process.env.VERSION, description: '9RouterX — 9R Next Go Generation: local AI gateway (installs the right platform binary)', bin: { 9routerx: 'bin/launcher.js' }, optionalDependencies: { '@9routerx/win32-x64': process.env.VERSION, '@9routerx/linux-x64': process.env.VERSION, '@9routerx/linux-arm64': process.env.VERSION, '@9routerx/darwin-x64': process.env.VERSION, '@9routerx/darwin-arm64': process.env.VERSION }, license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', keywords: ['ai','gateway','router','llm','proxy'], engines: { node: '>=18' }, publishConfig: { access: 'public' } };
+            const p = { name: '9routerx', version: process.env.VERSION, description: '9RouterX — 9R Next Go Generation: local AI gateway (installs the right platform binary)', bin: { 9routerx: 'bin/launcher.js' }, optionalDependencies: { '9routerx-win32-x64': process.env.VERSION, '9routerx-linux-x64': process.env.VERSION, '9routerx-linux-arm64': process.env.VERSION, '9routerx-darwin-x64': process.env.VERSION, '9routerx-darwin-arm64': process.env.VERSION }, license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', keywords: ['ai','gateway','router','llm','proxy'], engines: { node: '>=18' }, publishConfig: { access: 'public' } };
             require('fs').writeFileSync('pkg/9routerx/package.json', JSON.stringify(p, null, 2));
             const fs = require('fs');
             fs.writeFileSync('pkg/9routerx/bin/launcher.js', [
@@ -128,7 +128,7 @@ jobs:
               \"if (!t) { console.error('9RouterX: unsupported platform ' + platform + '/' + arch); process.exit(1); }\",
               \"const ext = platform === 'win32' ? '.exe' : '';\",
               \"const { spawnSync } = require('child_process');\",
-              \"const r = spawnSync(require.resolve('@9routerx/' + t + '/bin/9routerx' + ext), process.argv.slice(2), { stdio: 'inherit' });\",
+              \"const r = spawnSync(require.resolve('9routerx-' + t + '/bin/9routerx' + ext), process.argv.slice(2), { stdio: 'inherit' });\",
               \"process.exit(r.status || 0);\",
               ''
             ].join('\n'));
