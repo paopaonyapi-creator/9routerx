@@ -7,9 +7,10 @@
 **Never stop coding. Route smarter, spend less.**
 
 [![CI](https://github.com/yanstd888/9routerx/actions/workflows/ci.yml/badge.svg)](https://github.com/yanstd888/9routerx/actions/workflows/ci.yml)
-[![Release](https://github.com/yanstd888/9routerx/actions/workflows/release.yml/badge.svg)](https://github.com/yanstd888/9routerx/actions/workflows/release.yml)
+[![Release CI](https://github.com/yanstd888/9routerx/actions/workflows/release.yml/badge.svg)](https://github.com/yanstd888/9routerx/actions/workflows/release.yml)
 [![GitHub release](https://img.shields.io/github/v/release/yanstd888/9routerx)](https://github.com/yanstd888/9routerx/releases/latest)
-[![License](https://img.shields.io/github/license/yanstd888/9routerx)](https://github.com/yanstd888/9routerx/blob/main/LICENSE)
+[![npm](https://img.shields.io/npm/v/9routerx)](https://www.npmjs.com/package/9routerx)
+[![npm downloads](https://img.shields.io/npm/dm/9routerx)](https://www.npmjs.com/package/9routerx)
 [![GitHub All Releases](https://img.shields.io/github/downloads/yanstd888/9routerx/total.svg)](https://github.com/yanstd888/9routerx/releases)
 [![Telegram](https://img.shields.io/badge/Telegram-Join%20Group-26A5E1?logo=telegram&logoColor=white)](https://yanstd888.github.io/9routerx/tg)
 [![Source port](https://img.shields.io/badge/source_port-yanstd888-8b4a3a)](https://github.com/yanstd888/9routerx)
