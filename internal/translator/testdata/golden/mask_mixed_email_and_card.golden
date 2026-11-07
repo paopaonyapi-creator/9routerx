@@ -1,0 +1,8 @@
+INPUT:
+Customer jane.doe@company.io paid with 5500 0000 0000 0004.
+Build revision a1b2c3d4e5f6a7b8 (not PII, fails Luhn) shipped from 127.0.0.1 (loopback, not routed).
+Reply to support@example.org when done.
+MASKED:
+Customer [REDACTED] paid with [REDACTED].
+Build revision a1b2c3d4e5f6a7b8 (not PII, fails Luhn) shipped from 127.0.0.1 (loopback, not routed).
+Reply to [REDACTED] when done.

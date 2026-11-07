@@ -1,0 +1,50 @@
+// 9RouterX — this file is part of a port maintained by https://github.com/yanstd888/ — https://t.me/aiclub_id
+package chat
+
+import (
+	"net/http"
+	"sync/atomic"
+)
+
+// committedResponseWriter wraps http.ResponseWriter to track whether
+// response headers have been sent to the client (i.e., WriteHeader or
+// first Write has been called). This is used by fallback logic to
+// determine if a retry is safe.
+type committedResponseWriter struct {
+	http.ResponseWriter
+	committed int32 // atomic: 1 if headers have been sent
+	// stream records that the client asked for an event stream, so a terminal
+	// error written before any byte went out can be framed as SSE instead of a
+	// bare JSON document the client cannot split into events.
+	stream bool
+	// responsesClient records whether this request originated from the /v1/responses
+	// endpoint, allowing terminal stream errors (e.g. context_length_exceeded) to be
+	// emitted as native response.failed events.
+	responsesClient bool
+}
+
+func newCommittedResponseWriter(w http.ResponseWriter) *committedResponseWriter {
+	return &committedResponseWriter{ResponseWriter: w}
+}
+
+func (cw *committedResponseWriter) WriteHeader(code int) {
+	atomic.StoreInt32(&cw.committed, 1)
+	cw.ResponseWriter.WriteHeader(code)
+}
+
+func (cw *committedResponseWriter) Write(b []byte) (int, error) {
+	atomic.StoreInt32(&cw.committed, 1)
+	return cw.ResponseWriter.Write(b)
+}
+
+// IsCommitted returns true if response headers have been sent.
+func (cw *committedResponseWriter) IsCommitted() bool {
+	return atomic.LoadInt32(&cw.committed) == 1
+}
+
+// Flush implements http.Flusher if the underlying writer supports it.
+func (cw *committedResponseWriter) Flush() {
+	if f, ok := cw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}

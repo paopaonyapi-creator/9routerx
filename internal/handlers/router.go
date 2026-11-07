@@ -1,0 +1,887 @@
+// 9RouterX — source port and modifications by https://github.com/yanstd888/ — https://t.me/aiclub_id
+package handlers
+
+import (
+	"9routerx/proxy/internal/a2a"
+	"9routerx/proxy/internal/auth"
+	"9routerx/proxy/internal/clientconfig"
+	"9routerx/proxy/internal/constants"
+	"9routerx/proxy/internal/db"
+	"9routerx/proxy/internal/guardrails"
+	"9routerx/proxy/internal/handlers/batches"
+	"9routerx/proxy/internal/handlers/chat"
+	"9routerx/proxy/internal/handlers/dashboard"
+	"9routerx/proxy/internal/handlers/media"
+	"9routerx/proxy/internal/handlers/oauth"
+	"9routerx/proxy/internal/handlers/shared"
+	"9routerx/proxy/internal/handlers/sso"
+	"9routerx/proxy/internal/handlerutil"
+	"9routerx/proxy/internal/mcpserver"
+	"9routerx/proxy/internal/middleware"
+	"9routerx/proxy/internal/observ"
+	"9routerx/proxy/internal/securitylog"
+	"9routerx/proxy/internal/webhooks"
+	"9routerx/proxy/web"
+	json "encoding/json/v2"
+	"github.com/go-chi/chi/v5"
+	"net/http"
+	"net/http/pprof"
+	"os"
+	"strings"
+	"time"
+)
+
+// Re-export TokenSaverConfig for root compatibility
+type TokenSaverConfig = shared.TokenSaverConfig
+
+// NewTokenSaverConfig re-exports shared.NewTokenSaverConfig.
+func NewTokenSaverConfig(rtk, caveman, ponytail bool) *TokenSaverConfig {
+	return shared.NewTokenSaverConfig(rtk, caveman, ponytail)
+}
+
+// SetupRoutes mounts all domain handlers on the provided router. It returns the
+// engine's chat handler, which owns the semantic cache the engine actually
+// reads and writes. The caller must pass that same handler to
+// SetupDashboardRoutes: a second NewChatHandler builds a second
+// PersistentStore over the same SQLite file with its own in-memory LRU, so the
+// dashboard would report zero entries while the engine served hits, and
+// clearing entries from the dashboard would leave the engine still serving them.
+func SetupRoutes(r interface {
+	Get(pattern string, handlerFn http.HandlerFunc)
+	Post(pattern string, handlerFn http.HandlerFunc)
+	Put(pattern string, handlerFn http.HandlerFunc)
+	Patch(pattern string, handlerFn http.HandlerFunc)
+	Delete(pattern string, handlerFn http.HandlerFunc)
+	HandleFunc(pattern string, handlerFn http.HandlerFunc)
+}, repo *db.Repo, ts *TokenSaverConfig) *chat.ChatHandler {
+	chatH := chat.NewChatHandler(repo, ts)
+	mediaH := media.NewMediaHandler(repo, ts, chatH)
+	oauthH := oauth.NewOAuthHandler(repo)
+
+	dashH := dashboard.NewDashboardHandler(repo, ts)
+	if chatH != nil {
+		dashH.SemanticCache = chatH.SemanticCache
+		// The resilience layer is owned by the data plane, because that is the
+		// side that consults it on every request. The dashboard holds the same
+		// instance so its panel reports the layer a request was judged
+		// against, not a second one that can disagree with it.
+		dashH.Resilience = chatH.Resilience
+	}
+	// Chat & Models Domain (no version here: the four version GETs are
+	// public in SetupServerRouter, upstream PUBLIC_API_PATHS parity).
+	r.Get("/changelog", chatH.HandleChangelog)
+	r.Get("/api/changelog", chatH.HandleChangelog)
+	r.Get("/models", chatH.HandleModels)
+	r.Get("/models/info", chatH.HandleModelsInfo)
+	r.Get("/models/{kind}", chatH.HandleModelsByKind)
+	r.Get("/models/*", chatH.HandleModelLookup)
+	r.Get("/v1/models", chatH.HandleModels)
+	r.Get("/v1/models/*", chatH.HandleModelLookup)
+	r.Get("/api/v1/models", chatH.HandleModels)
+	r.Get("/api/v1/models/*", chatH.HandleModelLookup)
+	r.Get("/api/models", chatH.HandleModels)
+	r.Get("/api/models/*", chatH.HandleModelLookup)
+	r.Get("/api/models/catalog-sync", chatH.HandleCatalogSyncStatus)
+	r.Post("/api/models/catalog-sync", chatH.HandleCatalogSyncTrigger)
+	r.Get("/api/models", chatH.HandleModels)
+	r.Post("/chat/completions", chatH.HandleChatCompletions)
+	r.Post("/messages", chatH.HandleMessages)
+	r.Post("/messages/count_tokens", chatH.HandleCountTokens)
+	r.Post("/api/chat", chatH.HandleOllamaChat)
+
+	// Media, Audio, Video & Web Tools Domain
+	r.Post("/embeddings", mediaH.HandleEmbeddings)
+	r.Post("/rerank", mediaH.HandleRerank)
+	// /v1/responses needs model resolution, combos, account fallback and usage
+	// logging, none of which the media passthrough has, so it lives with the
+	// chat handlers — the same place /v1/messages does.
+	r.Post("/responses", chatH.HandleResponses)
+	r.Post("/responses/compact", chatH.HandleResponsesCompact)
+	r.Post("/images/generations", mediaH.HandleImages)
+	r.Post("/images/edits", mediaH.HandleImageEdits)
+	r.Post("/audio/speech", mediaH.HandleAudioSpeech)
+	r.Post("/audio/music", mediaH.HandleAudioMusic)
+	r.Post("/v1/audio/music", mediaH.HandleAudioMusic)
+	r.Get("/audio/voices", mediaH.HandleAudioVoices)
+	r.Get("/api/media-providers/tts/voices", mediaH.HandleAudioVoices)
+	r.Get("/api/media-providers/tts/inworld/voices", mediaH.HandleAudioVoices)
+	r.Get("/api/media-providers/tts/minimax/voices", mediaH.HandleAudioVoices)
+	r.Get("/api/media-providers/tts/deepgram/voices", mediaH.HandleAudioVoices)
+	r.Get("/api/media-providers/tts/elevenlabs/voices", mediaH.HandleAudioVoices)
+	r.Post("/audio/transcriptions", mediaH.HandleAudioTranscriptions)
+	r.Post("/audio/sound-generation", mediaH.HandleAudioSoundGeneration)
+	r.Post("/v1/audio/sound-generation", mediaH.HandleAudioSoundGeneration)
+	r.Post("/videos/generations", mediaH.HandleVideoGenerations)
+	r.Post("/videos/edits", mediaH.HandleVideoEdits)
+	r.Post("/videos/extensions", mediaH.HandleVideoExtensions)
+	r.Get("/videos/{id}", mediaH.HandleVideoGet)
+	r.Post("/search", mediaH.HandleSearch)
+	r.Post("/scrape", mediaH.HandleScrape)
+	r.Post("/web/fetch", mediaH.HandleWebFetch)
+	r.Post("/systemone", mediaH.HandleSystemone)
+
+	// The relay-deploy endpoints live in the dashboard group below, mounted
+	// under /api/proxy-pools/*-deploy behind RequireDashboardAuth (upstream
+	// parity). They were registered here under RequireApiKey, so the dashboard
+	// SPA — which authenticates with the session cookie and sends no engine
+	// key — got 401 "Authentication required" from every Deploy button.
+
+	// CLI Tools Status Domain (dashboard batch status for installed CLI tools)
+	// The /api/cli-tools/all-statuses alias is registered in SetupServerRouter
+	// under RequireDashboardAuth instead — it is a dashboard read. Registering it
+	// here too would win the match under RequireApiKey and keep it unreachable
+	// from the session cookie the SPA actually sends.
+	r.Get("/cli-tools/all-statuses", media.NewCLIToolsHandler().HandleAllStatuses)
+
+	// Headroom Management Domain (token-compression proxy lifecycle + dashboard proxy)
+	headroomH := media.NewHeadroomHandler(repo)
+	r.Post("/headroom/start", headroomH.HandleHeadroomStart)
+	r.Post("/headroom/stop", headroomH.HandleHeadroomStop)
+	r.Post("/headroom/restart", headroomH.HandleHeadroomRestart)
+	r.Get("/headroom/status", headroomH.HandleHeadroomStatus)
+	r.Get("/headroom/extras", headroomH.HandleHeadroomExtras)
+	r.Post("/headroom/extras", headroomH.HandleHeadroomExtras)
+	r.Delete("/headroom/extras", headroomH.HandleHeadroomExtras)
+	r.HandleFunc("/headroom/proxy", headroomH.HandleHeadroomProxy)
+	r.HandleFunc("/headroom/proxy/*", headroomH.HandleHeadroomProxy)
+
+	r.Post("/api/headroom/start", headroomH.HandleHeadroomStart)
+	r.Post("/api/headroom/stop", headroomH.HandleHeadroomStop)
+	r.Post("/api/headroom/restart", headroomH.HandleHeadroomRestart)
+	r.Get("/api/headroom/status", headroomH.HandleHeadroomStatus)
+	r.Get("/api/headroom/extras", headroomH.HandleHeadroomExtras)
+	r.Post("/api/headroom/extras", headroomH.HandleHeadroomExtras)
+	r.Delete("/api/headroom/extras", headroomH.HandleHeadroomExtras)
+	r.HandleFunc("/api/headroom/proxy", headroomH.HandleHeadroomProxy)
+	r.HandleFunc("/api/headroom/proxy/*", headroomH.HandleHeadroomProxy)
+	// OAuth & Import Tokens Domain
+	mountOAuthRoutes(r, oauthH)
+
+	// Usage Real-time SSE Stream & Stats Domain (dashboard topology animation + recent requests)
+	r.Get("/usage/stream", HandleUsageStream(repo))
+	r.Get("/api/usage/stream", HandleUsageStream(repo))
+	r.Get("/usage/stats", HandleUsageStats(repo))
+	r.Get("/api/usage/stats", HandleUsageStats(repo))
+	r.Get("/usage/chart", HandleUsageChart(repo))
+	r.Get("/api/usage/chart", HandleUsageChart(repo))
+	r.Get("/api/usage/dashboard", HandleUsageDashboard(repo))
+	r.Get("/api/usage/request-details", HandleRequestDetails(repo))
+	r.Get("/api/usage/export", HandleUsageExport(repo))
+	r.Get("/api/usage/request-details/{id}", HandleRequestDetail(repo))
+	r.Get("/api/usage/providers", dashH.HandleGetUsageProviders)
+	r.Get("/api/usage/provider-error-rates", dashH.HandleGetProviderErrorRates)
+	r.Get("/api/usage/{connectionId}", dashH.HandleGetConnectionUsage)
+	r.Get("/api/usage/{connectionId}/reset-credits", dashH.HandleListCodexResetCredits)
+	r.Post("/api/usage/{connectionId}/reset-credits/consume", dashH.HandleConsumeCodexResetCredit)
+	// GLM Reset Cards (Z.ai international)
+	r.Get("/api/usage/{connectionId}/glm-reset-cards", dashH.HandleGetGLMResetCards)
+	r.Post("/api/usage/{connectionId}/glm-reset-cards", dashH.HandleRedeemGLMResetCard)
+
+	// Debug Tracing Domain (p50/p95 latency per provider+model)
+	r.Get("/debug/traces", HandleDebugTraces)
+	return chatH
+}
+
+// SetupDashboardRoutes mounts the dashboard REST API. It is wrapped in
+// RequireDashboardAuth by the server router, which lets a cookie-authenticated
+// browser session, a valid API key or the local CLI token through when login is
+// enabled (upstream dashboardGuard).
+func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) {
+	var ts *TokenSaverConfig
+	if chatH != nil {
+		ts = chatH.TokenSaver
+	}
+	dashH := dashboard.NewDashboardHandler(repo, ts)
+	if chatH != nil {
+		dashH.SemanticCache = chatH.SemanticCache
+		// The engine's handler holds the limiter the data plane meters provider
+		// windows with, so the dashboard reports the same numbers the gate
+		// enforces instead of its own private view of them.
+		dashH.Limiter = chatH.RateLimiter
+		// Same instance as the resilience panel reads: the data plane owns the
+		// layer it consults on every request.
+		dashH.Resilience = chatH.Resilience
+	}
+	ssoH := sso.NewHandler(repo)
+
+	r.Get("/api/connections", dashH.HandleGetConnections)
+	r.Get("/api/providers", dashH.HandleGetProvidersClient)
+	r.Get("/api/providers/client", dashH.HandleGetProvidersClient)
+	r.Post("/api/connections", dashH.HandleCreateConnection)
+	r.Post("/api/providers/validate", dashH.HandleValidateProvider)
+	// The provider registry the dashboard renders its catalog from. Registered here as
+	// well as in dashboard.RegisterRoutes, because that table is mounted by tests
+	// only: a route added there alone is reachable in a unit test and 404s on the
+	// real server.
+	r.Get("/api/providers/catalog", dashH.HandleGetProviderCatalog)
+	r.Post("/api/providers/gemini-web/browser-login", dashH.HandleGeminiWebBrowserLogin)
+	r.Post("/api/providers/gemini-web/import-chrome", dashH.HandleGeminiWebImportChrome)
+	r.Post("/api/providers/deepseek-web/browser-login", dashH.HandleDeepSeekWebBrowserLogin)
+	r.Post("/api/providers/deepseek-web/import-chrome", dashH.HandleDeepSeekWebImportChrome)
+	r.Post("/api/connections/{id}/renew-deepseek", dashH.HandleDeepSeekWebRenew)
+	r.Put("/api/connections/{id}", dashH.HandleUpdateConnection)
+	r.Put("/api/providers/{id}", dashH.HandleUpdateConnection)
+	r.Delete("/api/connections/{id}", dashH.HandleDeleteConnection)
+	r.Delete("/api/providers/{id}", dashH.HandleDeleteConnection)
+	r.Post("/api/connections/{id}/test", dashH.HandleTestConnection)
+	r.Post("/api/connections/{id}/reorder", dashH.HandleReorderConnection)
+	r.Post("/api/providers/{id}/reorder", dashH.HandleReorderConnection)
+	r.Post("/api/providers/{id}/test", dashH.HandleTestConnection)
+	r.Get("/api/providers/suggested-models", HandleSuggestedModels)
+	// Usage & Quota Endpoints (dashboard quota tracker, usage stats, and topology stream)
+	r.Get("/api/usage/stream", HandleUsageStream(repo))
+	r.Get("/usage/stream", HandleUsageStream(repo))
+	r.Get("/api/usage/stats", HandleUsageStats(repo))
+	r.Get("/usage/stats", HandleUsageStats(repo))
+	r.Get("/api/usage/chart", HandleUsageChart(repo))
+	r.Get("/api/usage/dashboard", HandleUsageDashboard(repo))
+	r.Get("/api/usage/request-details", HandleRequestDetails(repo))
+	r.Get("/api/usage/export", HandleUsageExport(repo))
+	r.Get("/api/usage/request-details/{id}", HandleRequestDetail(repo))
+	r.Get("/api/usage/providers", dashH.HandleGetUsageProviders)
+	r.Get("/api/usage/provider-error-rates", dashH.HandleGetProviderErrorRates)
+	r.Get("/api/usage/{connectionId}", dashH.HandleGetConnectionUsage)
+
+	r.Get("/api/usage/{connectionId}/reset-credits", dashH.HandleListCodexResetCredits)
+	r.Post("/api/usage/{connectionId}/reset-credits/consume", dashH.HandleConsumeCodexResetCredit)
+	// GLM Reset Cards (Z.ai international)
+	r.Get("/api/usage/{connectionId}/glm-reset-cards", dashH.HandleGetGLMResetCards)
+	r.Post("/api/usage/{connectionId}/glm-reset-cards", dashH.HandleRedeemGLMResetCard)
+
+	// Cache Analytics & Management
+	r.Get("/api/cache", dashH.HandleGetCache)
+	r.Delete("/api/cache", dashH.HandleDeleteCache)
+	r.Get("/api/cache/entries", dashH.HandleGetCacheEntries)
+	r.Delete("/api/cache/entries", dashH.HandleDeleteCacheEntry)
+
+	// Compression Analytics
+	r.Get("/api/analytics/compression", dashH.HandleGetCompressionAnalytics)
+
+	// Jailbreak: agent prompt presets + per-model binding. Registered here and in
+	// dashboard.RegisterRoutes (a tests-only table); a route added there alone
+	// 404s on the real server — the same trap as the per-node limits pair.
+	r.Get("/api/jailbreak", dashH.HandleGetJailbreak)
+	r.Put("/api/jailbreak", dashH.HandlePutJailbreak)
+	r.Get("/api/jailbreak/presets", dashH.HandleListJailbreakPresets)
+	r.Put("/api/jailbreak/presets", dashH.HandlePutJailbreakPreset)
+	r.Delete("/api/jailbreak/presets/{id}", dashH.HandleDeleteJailbreakPreset)
+	r.Post("/api/jailbreak/presets/{id}/duplicate", dashH.HandleDuplicateJailbreakPreset)
+	r.Get("/api/jailbreak/models", dashH.HandleListJailbreakModels)
+	r.Get("/api/jailbreak/models/catalog", dashH.HandleJailbreakModelCatalog)
+	r.Put("/api/jailbreak/models", dashH.HandleSetJailbreakModel)
+	r.Delete("/api/jailbreak/models", dashH.HandleDeleteJailbreakModel)
+	r.Get("/api/jailbreak/excludes", dashH.HandleGetJailbreakExcludes)
+	r.Put("/api/jailbreak/excludes", dashH.HandlePutJailbreakExcludes)
+	r.Post("/api/jailbreak/import", dashH.HandleImportJailbreak)
+	r.Post("/api/jailbreak/resolve", dashH.HandleExplainJailbreak)
+	r.Get("/api/jailbreak/usage", dashH.HandleJailbreakUsage)
+	r.Post("/api/jailbreak/preview", dashH.HandlePreviewJailbreak)
+	r.Put("/api/jailbreak/presets/order", dashH.HandleReorderJailbreakPresets)
+	r.Post("/api/jailbreak/presets/upload", dashH.HandleUploadJailbreakPreset)
+
+	r.Get("/api/provider-nodes", dashH.HandleGetProviderNodes)
+	r.Post("/api/provider-nodes", dashH.HandleCreateProviderNode)
+	r.Put("/api/provider-nodes/{id}", dashH.HandleUpdateProviderNode)
+	r.Delete("/api/provider-nodes/{id}", dashH.HandleDeleteProviderNode)
+	r.Post("/api/provider-nodes/validate", dashH.HandleValidateProviderNode)
+	// Per-node capacity limits (docs/provider-limits-plan.md). These live here as
+	// well as in dashboard.RegisterRoutes because that table is mounted by tests
+	// only: a route added there alone is reachable in a unit test and 404s on the
+	// real server, which is how this pair was nearly shipped.
+	r.Put("/api/provider-nodes/{id}/limits", dashH.HandleUpdateProviderNodeLimits)
+	r.Post("/api/provider-nodes/{id}/quota/reset", dashH.HandleResetProviderNodeQuota)
+	r.Get("/api/providers/{id}/models", dashH.HandleGetConnectionModels)
+	r.Get("/api/providers/{id}/export-keys", dashH.HandleExportProviderKeys)
+	// Bulk removal of a node's imported models; the single-row form stays at
+	// DELETE /api/models/custom/{key}.
+	r.Delete("/api/providers/{id}/models", dashH.HandleDeleteProviderModels)
+	r.Get("/api/providers/{id}/overrides", dashH.HandleGetProviderOverrides)
+	r.Put("/api/providers/{id}/overrides", dashH.HandleSaveProviderOverrides)
+
+	r.Get("/api/combos", dashH.HandleGetCombos)
+	r.Post("/api/combos", dashH.HandleCreateCombo)
+	r.Post("/api/combos/auto-free", dashH.HandleAutoFreeCombo)
+	r.Post("/api/combos/auto-family", dashH.HandleAutoFamilyCombos)
+	r.Get("/api/combos/presets", dashH.HandleGetComboPresets)
+	r.Post("/api/combos/presets", dashH.HandleCreateComboPresets)
+	r.Put("/api/combos/{id}", dashH.HandleUpdateCombo)
+	// Smart select combo: dry-run a rule list, and apply every combo's rules on
+	// demand. These live here as well as in dashboard.RegisterRoutes for the
+	// same reason the node-limit pair does — that table is mounted by tests
+	// only, so a route registered there alone answers 200 in a unit test and
+	// "404 page not found" on the real server, which is exactly how the
+	// smart-rules editor shipped.
+	r.Post("/api/combos/reconcile", dashH.HandleReconcileSmartCombos)
+	r.Post("/api/combos/{id}/smart/preview", dashH.HandleComboSmartPreview)
+	r.Post("/api/combos/{id}/smart/load", dashH.HandleComboSmartLoad)
+	r.Get("/api/models/meta", dashH.HandleGetModelMeta)
+	r.Delete("/api/combos/{id}", dashH.HandleDeleteCombo)
+
+	r.Get("/api/proxy-pools", dashH.HandleGetProxyPools)
+	r.Post("/api/proxy-pools", dashH.HandleCreateProxyPool)
+	r.Put("/api/proxy-pools/{id}", dashH.HandleUpdateProxyPool)
+	r.Delete("/api/proxy-pools/{id}", dashH.HandleDeleteProxyPool)
+	r.Post("/api/proxy-pools/{id}/test", dashH.HandleTestProxyPool)
+
+	// Relay deploy endpoints. Dashboard reads/writes, not engine traffic: the
+	// SPA reaches them with its session cookie, exactly like the pool CRUD
+	// above. chi prefers the static segment over {id}, so these four cannot
+	// be shadowed by the parameterised routes registered first.
+	relayH := media.NewMediaHandler(repo, nil, nil)
+	r.Post("/api/proxy-pools/vercel-deploy", relayH.HandleVercelDeploy)
+	r.Post("/api/proxy-pools/deno-deploy", relayH.HandleDenoDeploy)
+	r.Post("/api/proxy-pools/cloudflare-deploy", relayH.HandleCloudflareDeploy)
+	r.Post("/api/proxy-pools/netlify-deploy", relayH.HandleNetlifyDeploy)
+
+	r.Get("/api/keys", dashH.HandleGetApiKeys)
+	r.Post("/api/keys", dashH.HandleCreateApiKey)
+	r.Delete("/api/keys/{id}", dashH.HandleDeleteApiKey)
+	r.Put("/api/keys/{id}/toggle", dashH.HandleToggleApiKey)
+	r.Post("/api/keys/{id}/rotate", dashH.HandleRotateApiKey)
+	r.Post("/api/keys/{id}/reset-quota", dashH.HandleResetApiKeyQuota)
+	r.Get("/api/keys/{id}/models", dashH.HandleGetApiKeyModels)
+	r.Put("/api/keys/{id}/models", dashH.HandleSetApiKeyModels)
+	// FASE 10.3 per-key model visibility. Registered here as well as in
+	// dashboard.RegisterRoutes (the tests-only table) because a route added
+	// there alone 404s on the real server — the same trap as the jailbreak and
+	// teams pairs above. The SPA's ApiKeyPolicyModal calls both, so a missing
+	// registration turned the visibility toggle into a silent no-op.
+	r.Get("/api/keys/{id}/hidden-models", dashH.HandleGetApiKeyHiddenModels)
+	r.Put("/api/keys/{id}/hidden-models", dashH.HandleSetApiKeyHiddenModels)
+	r.Put("/api/keys/{id}", dashH.HandleUpdateApiKey)
+	r.Get("/api/plans", dashH.HandleListPlans)
+	r.Post("/api/plans", dashH.HandleCreatePlan)
+	r.Get("/api/plans/{id}", dashH.HandleGetPlan)
+	r.Put("/api/plans/{id}", dashH.HandleUpdatePlan)
+	r.Delete("/api/plans/{id}", dashH.HandleDeletePlan)
+	r.Get("/api/plans/{id}/keys", dashH.HandlePlanKeys)
+	r.Get("/api/metrics", observ.Handler().ServeHTTP)
+	r.Get("/api/vault/status", dashH.HandleGetVaultStatus)
+	r.Get("/api/guardrails/policies", dashH.HandleGetGuardrailPolicies)
+	r.Post("/api/guardrails/policies", dashH.HandleCreateGuardrailPolicy)
+	r.Put("/api/guardrails/policies/{id}", dashH.HandleUpdateGuardrailPolicy)
+	r.Delete("/api/guardrails/policies/{id}", dashH.HandleDeleteGuardrailPolicy)
+	r.Get("/api/guardrails/logs", dashH.HandleListGuardrailLogs)
+	r.Post("/api/vault/rotate", dashH.HandleRotateVault)
+	r.Get("/api/models/custom", dashH.HandleGetCustomModels)
+	r.Get("/api/models/caps", dashH.HandleGetModelCaps)
+	r.Post("/api/models/custom", dashH.HandleSaveCustomModel)
+	r.Delete("/api/models/custom/{key}", dashH.HandleDeleteCustomModel)
+	r.Get("/api/models/disabled", dashH.HandleGetDisabledModels)
+	// mediaH needs the chat handler every chat-lane probe is forwarded through,
+	// so it is built with chatH — not the nil-chat relay handler below, whose
+	// probes would panic instead of reaching the provider.
+	mediaH := media.NewMediaHandler(repo, nil, chatH)
+	r.Post("/api/models/test", mediaH.HandleTestModel)
+	r.Post("/api/combos/{id}/test-models", mediaH.HandleComboTestModels)
+	r.Get("/api/media-providers/tts/voices", mediaH.HandleAudioVoices)
+	r.Get("/api/media-providers/tts/inworld/voices", mediaH.HandleAudioVoices)
+	r.Get("/api/media-providers/tts/minimax/voices", mediaH.HandleAudioVoices)
+	r.Get("/api/media-providers/tts/deepgram/voices", mediaH.HandleAudioVoices)
+	r.Get("/api/media-providers/tts/elevenlabs/voices", mediaH.HandleAudioVoices)
+	r.Put("/api/models/disabled/{provider}", dashH.HandleSaveDisabledModels)
+	r.Post("/api/models/auto-disable", dashH.HandleAutoDisableModels)
+	r.Get("/api/models/health", dashH.HandleGetModelHealth)
+	r.Put("/api/models/health", dashH.HandleSaveModelHealth)
+	r.Get("/api/models/alias", dashH.HandleGetModelAliases)
+	r.Get("/api/models/deprecations", dashH.HandleGetModelDeprecations)
+	r.Post("/api/models/sync", dashH.HandleSyncProviderModels)
+	r.Put("/api/models/alias", dashH.HandleSetModelAlias)
+	r.Delete("/api/models/alias", dashH.HandleDeleteModelAlias)
+
+	r.Get("/api/settings", dashH.HandleGetSettings)
+	r.Put("/api/settings", dashH.HandleUpdateSettings)
+	r.Patch("/api/settings", dashH.HandleUpdateSettings)
+	r.Put("/settings", dashH.HandleUpdateSettings)
+	r.Patch("/settings", dashH.HandleUpdateSettings)
+
+	// Update check (dashboard banner). Serves the updater's in-memory cache —
+	// the SPA calls it once per dashboard session and the answer is instant
+	// unless the cache is empty/stale, in which case the single bounded fetch
+	// happens here. The debug twin lives in the admin group below.
+	r.Get("/api/update/check", dashH.HandleUpdateCheck)
+
+	// Settings backup/restore + outbound proxy diagnostics (profile page)
+	r.Get("/api/settings/database", dashH.HandleExportDatabase)
+	r.Post("/api/settings/database", dashH.HandleImportDatabase)
+	r.Get("/api/settings/database/stats", dashH.HandleGetDatabaseStats)
+	r.Post("/api/settings/database/prune", dashH.HandlePruneDatabase)
+	r.Post("/api/settings/database/prune-usage", dashH.HandlePruneUsageHistory)
+	r.Post("/api/settings/database/vacuum", dashH.HandleVacuumDatabase)
+	r.Post("/api/settings/proxy-test", dashH.HandleProxyTest)
+
+	// Currency rates (profile page): reads live USD rates for the catalog codes
+	// and stores the subset the display uses.
+	r.Post("/api/settings/currency/refresh", dashH.HandleRefreshCurrencyRates)
+
+	// FASE 10.0 web-executor session pool: per-provider status, switch and
+	// manual health pass for the four web-session executors. Mounted here as
+	// well as in dashboard.RegisterRoutes, which is the tests-only table.
+	r.Get("/api/webexec", dashH.HandleGetWebExec)
+	r.Put("/api/webexec/{provider}/toggle", dashH.HandleToggleWebExec)
+	r.Post("/api/webexec/{provider}/test", dashH.HandleTestWebExec)
+
+	// Token saver testing benches & filter catalog
+	r.Get("/api/tokensaver/rtk/filters", dashH.HandleGetRTKFilters)
+	r.Post("/api/tokensaver/rtk/test", dashH.HandleTestRTK)
+	r.Post("/api/tokensaver/caveman/test", dashH.HandleTestCaveman)
+
+	// Headroom token-compression proxy management (dashboard parity)
+	headroomH := media.NewHeadroomHandler(repo)
+	r.Get("/api/headroom/status", headroomH.HandleHeadroomStatus)
+	r.Post("/api/headroom/start", headroomH.HandleHeadroomStart)
+	r.Post("/api/headroom/stop", headroomH.HandleHeadroomStop)
+	r.Post("/api/headroom/restart", headroomH.HandleHeadroomRestart)
+	r.Get("/api/headroom/extras", headroomH.HandleHeadroomExtras)
+	r.Post("/api/headroom/extras", headroomH.HandleHeadroomExtras)
+	r.Delete("/api/headroom/extras", headroomH.HandleHeadroomExtras)
+	r.HandleFunc("/api/headroom/proxy", headroomH.HandleHeadroomProxy)
+	r.HandleFunc("/api/headroom/proxy/*", headroomH.HandleHeadroomProxy)
+
+	// Tunnel & Tailscale
+	r.Get("/api/tunnel/status", dashH.HandleTunnelStatus)
+	r.Post("/api/tunnel/enable", dashH.HandleTunnelEnable)
+	r.Post("/api/tunnel/disable", dashH.HandleTunnelDisable)
+	r.Get("/api/tunnel/tailscale-check", dashH.HandleTailscaleCheck)
+	r.Post("/api/tunnel/tailscale-enable", dashH.HandleTailscaleEnable)
+	r.Post("/api/tunnel/tailscale-disable", dashH.HandleTailscaleDisable)
+
+	// Single Sign-On settings checks + SP metadata (profile page)
+	r.Post("/api/auth/oidc/test", ssoH.HandleOidcTest)
+	r.Post("/api/auth/saml/test", ssoH.HandleSamlTest)
+	r.Get("/api/auth/saml/metadata", ssoH.HandleSamlMetadata)
+
+	// Multi-target webhooks (FASE 10.4): CRUD over the push destinations and a
+	// per-target test ping. A webhook URL is a credential and a write target,
+	// so it rides the same dashboard gate as the connections and keys above.
+	webhooks.NewHandler(repo).Register(r)
+
+	// Install-intelligence endpoints: the security log (failed attempts, probe
+	// records), the notification feed (quota pressure) and the team cost
+	// centers. They sit in their own group behind RequireDashboardSessionAuth,
+	// not the plain dashboard gate: an engine client API key must not be able
+	// to read which IPs probed the gateway or which keys are near their budget
+	// (port(serenhope) parity — key-sessions are refused here). A session
+	// cookie, the local CLI token, or an install with login disabled pass.
+	//
+	// The teams routes were first added only to dashboard.RegisterRoutes, the
+	// tests-only table, so every /api/teams call answered "404 page not found"
+	// on the real server while the unit tests stayed green.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireDashboardSessionAuth(repo))
+
+		// Security Log
+		r.Get("/api/security-log", dashH.HandleGetSecurityLog)
+		r.Get("/api/security-logs", dashH.HandleGetSecurityLog)
+		r.Delete("/api/security-log", dashH.HandleClearSecurityLog)
+		r.Delete("/api/security-logs", dashH.HandleClearSecurityLog)
+
+		// Notifications (bell feed)
+		r.Get("/api/notifications", dashH.HandleGetNotifications)
+		r.Get("/api/notifications/unread-count", dashH.HandleGetUnreadNotificationCount)
+		r.Post("/api/notifications", dashH.HandlePostNotifications)
+		r.Post("/api/notifications/ack", dashH.HandleAckNotifications)
+		r.Post("/api/notifications/scan", dashH.HandleScanNotifications)
+		r.Get("/api/notifications/scan", dashH.HandleScanNotifications)
+
+		// Teams: tenant cost centers (OmniRoute port) and the per-key billing
+		// attribution their usage reports read.
+		r.Get("/api/teams", dashH.HandleListTeams)
+		r.Post("/api/teams", dashH.HandleCreateTeam)
+		r.Put("/api/teams/{id}", dashH.HandleUpdateTeam)
+		r.Delete("/api/teams/{id}", dashH.HandleArchiveTeam)
+		r.Get("/api/teams/{id}/usage", dashH.HandleTeamUsage)
+		r.Put("/api/keys/{id}/billing-team", dashH.HandleSetApiKeyBillingTeam)
+
+		// Compliance audit log (FASE 10.6): the operator-action trail. It
+		// records actor and IP, so like the security log above it is refused
+		// to an engine client API key.
+		r.Get("/api/audit", dashH.HandleListAuditLogs)
+	})
+
+	// Auto Backup
+	r.Get("/api/settings/auto-backup", dashH.HandleGetAutoBackup)
+	r.Patch("/api/settings/auto-backup", dashH.HandlePatchAutoBackup)
+	r.Post("/api/settings/auto-backup", dashH.HandlePostAutoBackup)
+
+	// Mount OAuth routes under dashboard auth so web dashboard can initiate and exchange tokens
+	oauthH := oauth.NewOAuthHandler(repo)
+	mountOAuthRoutes(r, oauthH)
+}
+
+// SetupConsoleLogRoutes mounts operational log APIs behind a full dashboard
+// session or local CLI token. Client API keys are intentionally rejected.
+func SetupConsoleLogRoutes(r chi.Router, repo *db.Repo) {
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireConsoleLogAuth(repo))
+		r.Get("/api/translator/console-logs", HandleConsoleLogsGet)
+		r.Delete("/api/translator/console-logs", HandleConsoleLogsDelete)
+		r.Get("/api/translator/console-logs/stream", HandleConsoleLogsStream)
+		r.Get("/api/translator/console-logs/level", HandleConsoleLogsLevelGet)
+		r.Put("/api/translator/console-logs/level", HandleConsoleLogsLevelPut)
+	})
+}
+
+func mountOAuthRoutes(r interface {
+	Get(pattern string, handlerFn http.HandlerFunc)
+	Post(pattern string, handlerFn http.HandlerFunc)
+}, oauthH *oauth.OAuthHandler) {
+	r.Post("/api/oauth/{provider}/import", oauthH.HandleOAuthImport)
+	r.Get("/api/oauth/kiro/social-authorize", oauthH.HandleOAuthKiroSocialAuthorize)
+	r.Post("/api/oauth/kiro/social-exchange", oauthH.HandleOAuthKiroSocialExchange)
+	r.Post("/api/oauth/kiro/import", oauthH.HandleKiroImport)
+	r.Post("/api/oauth/kiro/import-cli-proxy", oauthH.HandleKiroImportCliProxy)
+	r.Get("/api/oauth/kiro/auto-import", oauthH.HandleKiroAutoImport)
+	r.Post("/api/oauth/kiro/api-key", oauthH.HandleKiroAPIKey)
+	r.Post("/api/oauth/codex/bulk-import", oauthH.HandleOAuthCodexBulkImport)
+	r.Post("/api/oauth/grok-cli/bulk-import", oauthH.HandleOAuthGrokCliBulkImport)
+	r.Post("/api/oauth/freebuff/initiate", oauthH.HandleFreebuffInitiate)
+	r.Post("/api/oauth/freebuff/poll", oauthH.HandleFreebuffPoll)
+	r.Get("/api/oauth/freebuff/session", oauthH.HandleFreebuffSessionStatus)
+	r.Post("/api/oauth/freebuff/session/switch", oauthH.HandleFreebuffSessionSwitch)
+	r.Get("/api/oauth/antigravity/authorize", oauthH.HandleAntigravityAuthorize)
+	r.Post("/api/oauth/antigravity/exchange", oauthH.HandleAntigravityExchange)
+	r.Get("/api/oauth/cline/authorize", oauthH.HandleClineAuthorize)
+	r.Post("/api/oauth/cline/exchange", oauthH.HandleClineExchange)
+	r.Get("/api/oauth/pkce/authorize", oauthH.HandlePKCEAuthorize)
+	r.Post("/api/oauth/pkce/exchange", oauthH.HandlePKCEExchange)
+	// Codex's OAuth client only accepts its registered loopback redirect URI,
+	// so the callback is served by a dedicated fixed-port listener rather than
+	// the dashboard's /callback page. See internal/handlers/oauth/codex_proxy.go.
+	r.Get("/api/oauth/codex/start-proxy", oauthH.HandleCodexStartProxy)
+	r.Get("/api/oauth/codex/poll-status", oauthH.HandleCodexPollStatus)
+	r.Get("/api/oauth/codex/stop-proxy", oauthH.HandleCodexStopProxy)
+	r.Get("/api/oauth/authcode/authorize", oauthH.HandleAuthCodeAuthorize)
+	r.Post("/api/oauth/authcode/exchange", oauthH.HandleAuthCodeExchange)
+	r.Get("/api/oauth/trae/authorize", oauthH.HandleTraeAuthorize)
+	r.Post("/api/oauth/trae/exchange", oauthH.HandleTraeExchange)
+	r.Get("/api/oauth/windsurf/authorize", oauthH.HandleWindsurfAuthorize)
+	r.Post("/api/oauth/windsurf/exchange", oauthH.HandleWindsurfExchange)
+	r.Get("/api/oauth/zed/authorize", oauthH.HandleZedAuthorize)
+	r.Post("/api/oauth/zed/exchange", oauthH.HandleZedExchange)
+	r.Post("/api/oauth/device/start", oauthH.HandleDeviceStart)
+	r.Post("/api/oauth/device/poll", oauthH.HandleDevicePoll)
+	r.Post("/api/oauth/cursor/import", oauthH.HandleCursorImport)
+	r.Get("/api/oauth/cursor/auto-import", oauthH.HandleCursorAutoImport)
+	r.Get("/api/oauth/kimchi/authorize", oauthH.HandleKimchiAuthorize)
+	r.Post("/api/oauth/kimchi/exchange", oauthH.HandleKimchiExchange)
+	r.Post("/api/oauth/gitlab/pat", oauthH.HandleGitlabPAT)
+	r.Post("/api/oauth/iflow/cookie", oauthH.HandleIflowCookie)
+	r.Get("/api/oauth/xiaomi-mimo/authorize", oauthH.HandleMimoAuthorize)
+	r.Post("/api/oauth/xiaomi-mimo/exchange", oauthH.HandleMimoExchange)
+}
+
+// SetupServerRouter mounts public endpoints (/health, /api/hello) and
+// API-key protected routes (all engine + admin routes) on the chi router.
+//
+// It returns the engine's chat handler: the one SetupRoutes built and the
+// dashboard group is mounted on. The auto-ping scheduler sends its pings
+// through that same instance, so a ping resolves credentials, refreshes OAuth
+// and picks an executor the way real traffic does. Returning it is what keeps
+// the gateway from building a second handler for the scheduler — see the
+// warning on SetupRoutes about the two PersistentStores.
+func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) *chat.ChatHandler {
+	// Probe detector for unmapped endpoints
+	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+		ip := auth.LoginClientIP(req)
+		probeTarget := req.URL.Path
+		if req.URL.RawQuery != "" {
+			probeTarget += "?" + req.URL.RawQuery
+		}
+		if match, label := securitylog.MatchProbe(probeTarget); match {
+			securitylog.Record(securitylog.Entry{
+				Type:      "probe_detected",
+				Severity:  "critical",
+				IP:        ip,
+				Method:    req.Method,
+				Path:      req.URL.Path,
+				Status:    http.StatusNotFound,
+				Detail:    label,
+				UserAgent: req.UserAgent(),
+			})
+		}
+		http.NotFound(w, req)
+	})
+
+	// Public (unauthenticated) endpoints
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
+		// The name field is the API identity (9RouterX rebrand): a client asking
+		// "what am I talking to" reads it without parsing any other payload.
+		w.Write([]byte(`{"status":"ok","name":"9RouterX"}`))
+	})
+	// Version info is public (upstream PUBLIC_API_PATHS): the Sidebar polls
+	// /api/version on every dashboard page including /login, before any
+	// session or API key exists.
+	versionH := chat.NewChatHandler(repo, ts)
+	r.Get("/version", versionH.HandleVersion)
+	r.Get("/api/version", versionH.HandleVersion)
+	r.Get("/api/version/status", versionH.HandleVersionStatus)
+	r.Get("/api/version/check", versionH.HandleCheckUpdate)
+	// Embedded Native Dashboard SPA
+	webH := web.Handler()
+	oauthH := oauth.NewOAuthHandler(repo)
+	// Public OAuth landing page: providers redirect browsers here after login.
+	// Browsers carry neither the dashboard session nor the engine API key.
+	r.Get("/callback", oauthH.HandleCallbackPage)
+	r.Get("/", webH.ServeHTTP)
+	r.Get("/login", webH.ServeHTTP)
+	// Dashboard pages require the login session when requireLogin is on; the
+	// guard redirects browsers to /login (upstream dashboardGuard).
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireDashboardPage(repo))
+		r.Get("/dashboard", webH.ServeHTTP)
+		r.Get("/dashboard/*", webH.ServeHTTP)
+	})
+	r.Get("/media", webH.ServeHTTP)
+	r.Get("/media-providers/*", webH.ServeHTTP)
+	r.Get("/media-providers/web", webH.ServeHTTP)
+	r.Get("/connections", webH.ServeHTTP)
+	// Provider share link: a fragment-only URL that the dashboard SPA resolves.
+	// Registered here, not under /dashboard/*, because the receiver may not have
+	// a session yet — the SPA gates the write itself and preserves the fragment
+	// across the login redirect. The fragment never reaches the server, so a key
+	// embedded in the link is never logged.
+	//
+	// The pattern is "/add", not "/v1/add": RequestLogger
+	// (internal/middleware/logging.go:70-77) strips a leading /v1/ from
+	// req.URL.Path before the router sees it, so a "/v1/add" pattern would never
+	// match. /v1/add still reaches this handler — the prefix is virtual, which
+	// is why every engine route is registered twice below.
+	//
+	// It also must not go into SetupRoutes: that whole group is mounted inside
+	// RequireApiKey (router.go:627-631), so an add route registered there would
+	// answer 401 to the browser that is supposed to open it.
+	r.Get("/add", webH.ServeHTTP)
+	r.Get("/combos", webH.ServeHTTP)
+	r.Get("/analytics", webH.ServeHTTP)
+	r.Get("/terminal", webH.ServeHTTP)
+	r.Get("/keys", webH.ServeHTTP)
+	r.Get("/settings", webH.ServeHTTP)
+	r.Get("/providers", webH.ServeHTTP)
+	r.Get("/usage", webH.ServeHTTP)
+	r.Get("/quota", webH.ServeHTTP)
+	r.HandleFunc("/assets/*", webH.ServeHTTP)
+	r.HandleFunc("/providers/*", webH.ServeHTTP)
+	r.HandleFunc("/icons/*", webH.ServeHTTP)
+	r.HandleFunc("/favicon.ico", webH.ServeHTTP)
+	r.HandleFunc("/favicon-16x16.png", webH.ServeHTTP)
+	r.HandleFunc("/favicon-32x32.png", webH.ServeHTTP)
+	r.HandleFunc("/apple-touch-icon.png", webH.ServeHTTP)
+	r.HandleFunc("/android-chrome-192x192.png", webH.ServeHTTP)
+	r.HandleFunc("/android-chrome-512x512.png", webH.ServeHTTP)
+	r.HandleFunc("/logo-9routerx.png", webH.ServeHTTP)
+	r.HandleFunc("/icons.svg", webH.ServeHTTP)
+	r.HandleFunc("/sw.js", webH.ServeHTTP)
+	r.HandleFunc("/manifest.webmanifest", webH.ServeHTTP)
+	r.HandleFunc("/manifest.json", webH.ServeHTTP)
+	r.HandleFunc("/api/hello", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if r.Method != http.MethodHead {
+			w.Write([]byte(`{"status":"ok","message":"hello"}`))
+		}
+	})
+	// Dashboard login session. status/login/logout/require-login are public so
+	// the login page can load before a cookie exists (upstream PUBLIC_API_PATHS).
+	dashH := dashboard.NewDashboardHandler(repo, ts)
+	if versionH != nil {
+		dashH.SemanticCache = versionH.SemanticCache
+		dashH.Resilience = versionH.Resilience
+	}
+	r.Get("/api/auth/status", dashH.HandleAuthStatus)
+	r.Post("/api/auth/login", dashH.HandleAuthLogin)
+	r.Post("/api/auth/logout", dashH.HandleAuthLogout)
+	r.Get("/api/settings/require-login", dashH.HandleRequireLogin)
+	r.Get("/api/tunnel/status", dashH.HandleTunnelStatus)
+
+	// A2A (Agent-to-Agent protocol, FASE 10.2) — public paths, NOT inside the
+	// RequireApiKey group: discovery must work before a caller knows which
+	// token to present, and the JSON-RPC endpoint enforces its own bearer
+	// token and enable flag internally (a dashboard API key gate on top would
+	// double-gate a surface that authenticates itself).
+	a2aSrv := a2a.NewServer(repo)
+	r.Get("/.well-known/agent.json", a2aSrv.ServeAgentCard)
+	r.Post("/api/a2a", a2aSrv.ServeJSONRPC)
+	r.Get("/api/a2a/status", a2aSrv.ServeStatus)
+
+	// MCP server (Model Context Protocol, FASE 10.8) — same shape as A2A above:
+	// a public mount, NOT under the dashboard gate. ServeHTTP authenticates
+	// itself (constant-time compare against ROUTERX_MCP_TOKEN, 403 when the
+	// token is unset) and an IDE's MCP client carries only that token — never a
+	// dashboard session or a client API key. Mounted inside the gated dashboard
+	// group, the gate answered "dashboard session required" to the very token
+	// the endpoint was built to verify, making the HTTP lane unusable on every
+	// install with requireLogin on (the default) while the stdio lane kept
+	// working. Same reasoning as the A2A comment: a dashboard API key gate on
+	// top would double-gate a surface that authenticates itself.
+	mcpSrv := mcpserver.NewMCPServer(repo)
+	r.Post("/api/mcp", mcpSrv.ServeHTTP)
+
+	// Admin-only operations (health reset, shutdown, update) - strictly requires session cookie or CLI token.
+	// Standard client API keys are rejected, matching upstream ALWAYS_PROTECTED.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireAdminAuth())
+
+		// Health reset endpoint — dashboard calls this via headroom proxy
+		r.Post("/admin/health/reset", func(w http.ResponseWriter, r *http.Request) {
+			provider := r.URL.Query().Get("provider")
+			model := r.URL.Query().Get("model")
+			if err := repo.ResetProviderHealth(provider, model); err != nil {
+				handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+			w.Header().Set(constants.HeaderContentType, constants.ContentTypeJSON)
+			json.MarshalWrite(w, map[string]string{"status": "ok"})
+		})
+
+		chatH := chat.NewChatHandler(repo, ts)
+		r.Post("/api/version/update", chatH.HandleTriggerUpdate)
+		r.Post("/api/version/auto-update", chatH.HandleToggleAutoUpdate)
+		r.Post("/api/version/shutdown", HandleShutdown)
+		// Updater observability: last check, cache, decision, raw response.
+		// Admin session/CLI token AND UPDATE_DEBUG_ENDPOINT=1 — the handler
+		// answers 404 on a default install (internal/handlers/dashboard/update.go).
+		r.Get("/api/update/debug", dashH.HandleUpdateDebug)
+
+		// Profiling endpoints (pprof) — disabled by default in production for security;
+		// enable explicitly via PPROF_ENABLED=true. Gated behind RequireAdminAuth
+		// (issue #126) so debug surface is never exposed publicly.
+		if strings.EqualFold(strings.TrimSpace(os.Getenv("PPROF_ENABLED")), "true") {
+			r.HandleFunc("/debug/pprof/", pprof.Index)
+			r.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+			r.HandleFunc("/debug/pprof/profile", pprof.Profile)
+			r.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+			r.HandleFunc("/debug/pprof/trace", pprof.Trace)
+			r.HandleFunc("/debug/pprof/*", pprof.Index)
+		}
+	})
+
+	// API-key protected domain routes. The rate limiter sits after
+	// RequireApiKey so it reads the per-key RPM/TPM/concurrency limits off the
+	// authenticated key. Guardrails sit after both: a policy is scoped by API
+	// key, and a caller the limiter already rejected must not be able to make
+	// the gateway scan content either.
+	// The limiter's window is a startup read: every in-memory sliding window is
+	// sized against it, so changing it has to restart the gateway.
+	window := time.Duration(repo.GetRateLimitDefaults().WindowSeconds) * time.Second
+	rateLimiter := middleware.NewRateLimiter(window)
+	// The plan tier (F-3) is resolved from the repository, so a plan change
+	// applies to the next request without a restart.
+	rateLimiter.SetPlanSource(repo)
+	// The per-period budget (F-2) measures its spend from the same ledger the
+	// Usage dashboard reads, so the ceiling and the dashboard cannot disagree
+	// about what a key has spent.
+	rateLimiter.SetBudgetReader(repo)
+	// The fallback itself is read per request, so an operator can raise or drop
+	// a global default without a restart. Only the window, which the live
+	// windows already depend on, is pinned at boot.
+	defaults := func() middleware.Limits {
+		d := repo.GetRateLimitDefaults()
+		if !d.Enabled {
+			return middleware.Limits{}
+		}
+		return middleware.Limits{RPM: d.RPM, TPM: d.TPM, Concurrency: d.Concurrency}
+	}
+	guardrailStore := guardrails.NewStore(repo.RawDB())
+	// One switch for both taps. It reads the settings row per request, which is
+	// a single indexed read on an already-loaded connection, and buys an
+	// operator an off switch that does not require deleting their policies.
+	guardrailSwitch := guardrails.Switch(func() bool { return repo.GetGuardrailsEnabled() })
+	var engineChatH *chat.ChatHandler
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireApiKey(repo))
+		// serenhope per-key budget gates (port(serenhope)): the daily cost
+		// ceiling and the per-interval request cap. They sit before the rate
+		// limiter, in upstream's validateApiKey order — a key over a budget
+		// cap must not consume a queue slot or a rate-limit stamp on its way
+		// to the refusal.
+		r.Use(middleware.RequireKeyPolicies(repo))
+		r.Use(middleware.RequireRateLimit(rateLimiter, defaults, repo))
+		r.Use(guardrails.Inbound(guardrailStore, guardrailAudit(repo), guardrailSwitch))
+		engineChatH = SetupRoutes(r, repo, ts)
+
+		fileH := batches.NewFileHandler(repo)
+		batchH := batches.NewBatchHandler(repo)
+
+		// File endpoints (OpenAI Batch API compatible)
+		r.Post("/v1/files", fileH.HandleCreateFile)
+		r.Post("/files", fileH.HandleCreateFile)
+		r.Get("/v1/files", fileH.HandleListFiles)
+		r.Get("/files", fileH.HandleListFiles)
+		r.Get("/v1/files/{file_id}", fileH.HandleGetFile)
+		r.Get("/files/{file_id}", fileH.HandleGetFile)
+		r.Get("/v1/files/{file_id}/content", fileH.HandleGetFileContent)
+		r.Get("/files/{file_id}/content", fileH.HandleGetFileContent)
+		r.Delete("/v1/files/{file_id}", fileH.HandleDeleteFile)
+		r.Delete("/files/{file_id}", fileH.HandleDeleteFile)
+
+		// Batch endpoints (OpenAI Batch API compatible)
+		r.Post("/v1/batches", batchH.HandleCreateBatch)
+		r.Post("/batches", batchH.HandleCreateBatch)
+		r.Get("/v1/batches", batchH.HandleListBatches)
+		r.Get("/batches", batchH.HandleListBatches)
+		r.Get("/v1/batches/{batch_id}", batchH.HandleGetBatch)
+		r.Get("/batches/{batch_id}", batchH.HandleGetBatch)
+		r.Post("/v1/batches/{batch_id}/cancel", batchH.HandleCancelBatch)
+		r.Post("/batches/{batch_id}/cancel", batchH.HandleCancelBatch)
+	})
+
+	// The provider gate (docs/provider-limits-plan.md) reads the same limiter
+	// for its per-node buckets, which the per-key middleware never touches.
+	// Without this call the gate is inert on a real boot: its unit tests set
+	// the field by hand, so only a booted router can tell the difference.
+	engineChatH.SetRateLimiter(rateLimiter)
+
+	// Dashboard management API: login-gated when requireLogin is on, but still
+	// reachable with a valid API key or the local CLI token (upstream parity).
+	// It reads the cache through the engine's chat handler: versionH was built
+	// before any traffic, so the cache on that instance never fills.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireDashboardAuth(repo))
+		SetupDashboardRoutes(r, repo, engineChatH)
+	})
+
+	// CLI Tools status is a dashboard read: the SPA calls it with the session
+	// cookie, never an LLM API key. It was registered inside SetupRoutes, which
+	// is mounted under RequireApiKey, so every dashboard call 401'd and the view
+	// bounced to the endpoint tab. Reachable with a session, an API key, or the
+	// local CLI token — same policy as the rest of the dashboard group.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireDashboardAuth(repo))
+		r.Get("/api/cli-tools/all-statuses", media.NewCLIToolsHandler().HandleAllStatuses)
+		// Hermes configuration is per-profile and writes into ~/.hermes on the
+		// operator's disk, so it belongs to the dashboard group: the SPA reaches
+		// it with the session cookie, never an engine API key.
+		hermesH := media.NewHermesHandler()
+		r.Get("/api/cli-tools/hermes-profiles", hermesH.HandleProfiles)
+		r.Get("/api/cli-tools/hermes-settings", hermesH.HandleGet)
+		r.Post("/api/cli-tools/hermes-settings", hermesH.HandlePost)
+		r.Delete("/api/cli-tools/hermes-settings", hermesH.HandleDelete)
+		// pi writes the same kind of file Hermes does — a CLI agent's own
+		// config on the operator's disk — so it rides the same dashboard group.
+		piH := media.NewPiHandler(repo)
+		r.Get("/api/cli-tools/pi-settings", piH.HandleGet)
+		r.Post("/api/cli-tools/pi-settings", piH.HandlePost)
+		r.Delete("/api/cli-tools/pi-settings", piH.HandleDelete)
+		// The nine clientconfig adapters (claude, codex, opencode, droid,
+		// crush, kilo, cline, pi, omp) each answer the same three verbs.
+		// Upstream gives every client its own Next route; here one handler
+		// resolves the id out of the path, so the adapter table stays the only
+		// place a client is described.
+		cliH := media.NewCLIToolHandler(engineChatH)
+		for _, id := range clientconfig.IDs() {
+			// pi has its own handler above (it merges over a previously saved
+			// block); skip it so the two cannot disagree about the same file.
+			if id == "pi" {
+				continue
+			}
+			route := "/api/cli-tools/" + id + "-settings"
+			r.Get(route, cliH.HandleCLIToolGet)
+			r.Post(route, cliH.HandleCLIToolPost)
+			r.Delete(route, cliH.HandleCLIToolDelete)
+		}
+	})
+
+	SetupConsoleLogRoutes(r, repo)
+	return engineChatH
+}

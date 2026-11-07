@@ -1,0 +1,25 @@
+# 9RouterX — all source code port and modification by https://github.com/yanstd888/ — https://t.me/aiclub_id
+services:
+  9routerx:
+    build: .
+    container_name: 9routerx
+    ports:
+      - "888:888"
+    volumes:
+      - 9router-data:/data
+    environment:
+      - PORT=888
+      - DATA_DIR=/data
+      # Token saver toggles (all default off except RTK):
+      # - RTK_ENABLED=true
+      # - CAVEMAN_ENABLED=false
+      # - PONYTAIL_ENABLED=false
+      # Or use DB_PATH for custom SQLite location:
+      # - DB_PATH=/data/custom/data.sqlite
+    restart: unless-stopped
+
+volumes:
+  # Kept under the pre-rebrand name on purpose: renaming the volume would make
+  # existing deployments come up with an empty /data on the next pull, silently
+  # detaching their SQLite database. The name is data-compat, not branding.
+  9router-data:

@@ -1,0 +1,2104 @@
+/* 9RouterX — derived from the work of https://github.com/yanstd888/ — port and modifications by the maintainers — https://t.me/aiclub_id */
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn-svelte/tailwind.css";
+/* Inter is NOT imported from @fontsource here: the vendored @font-face set
+   further down already serves Inter from src/assets/fonts (spec §6.G.1 — one
+   origin, one font source), so the CLI's default import would ship the font
+   twice. */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * 9RouterX design tokens — glyph edition.
+ *
+ * DARK is the shipped default (`<html class="dark">` in index.html); the
+ * `.dark` block rebinds every token to the glyph dark palette. LIGHT is the
+ * `:root` default: the same glyph palette in its light variant (spec
+ * TASK-9routerX-anim-bg §10.1 — bg #f6f6f3, ink #16181d, accent #2f5bd3),
+ * replacing the old warm-paper light theme entirely. The ThemeToggle in
+ * TopBar flips `.dark`/`.light` on <html>; with `.dark` absent the light
+ * values below apply to 100% of the UI through the same `--app-*` plumbing.
+ *
+ * Both themes rebind the raw `--9x-*` glyph tokens too (LoginView and the
+ * ASCII background read those directly), so no surface can keep a dark-only
+ * value after a toggle.
+ */
+
+@theme inline {
+  /* Brand scale (terracotta) */
+  --color-brand-50: #fdf1ed;
+  --color-brand-100: #fadccf;
+  --color-brand-200: #f4b59c;
+  --color-brand-300: #ee8d6a;
+  --color-brand-400: #ea7855;
+  --color-brand-500: #e56a4a;
+  --color-brand-600: #cc5236;
+  --color-brand-700: #a64027;
+  --color-brand-800: #7a2f1d;
+  --color-brand-900: #4d1e12;
+  --color-primary: var(--app-primary);
+  --color-primary-hover: var(--app-primary-hover);
+  --color-vibrancy: var(--app-sidebar);
+
+  /* Semantic surfaces */
+  --color-bg: var(--app-bg);
+  --color-bg-alt: var(--app-bg-alt);
+  --color-surface: var(--app-surface);
+  --color-surface-2: var(--app-surface-2);
+  --color-surface-3: var(--app-surface-3);
+  --color-sidebar: var(--app-sidebar);
+
+  /* Borders */
+  --color-border: var(--app-border);
+  --color-border-subtle: var(--app-border-subtle);
+
+  /* Text */
+  --color-text-main: var(--app-text-main);
+  --color-text-muted: var(--app-text-muted);
+  --color-text-subtle: var(--app-text-subtle);
+
+  /* Status — rebindable per theme, so the dark reskin can adopt glyph tones */
+  --color-danger: var(--app-danger);
+  --color-success: var(--app-success);
+  --color-warning: var(--app-warning);
+  --color-info: var(--app-info);
+
+  /* Radii */
+  --radius-brand: 10px;
+  --radius-brand-lg: 14px;
+
+  /* Shadows */
+  --shadow-soft: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-warm: 0 2px 12px -2px rgba(229, 106, 74, 0.18);
+  --shadow-elevated: 0 12px 28px -4px rgba(60, 50, 45, 0.06);
+
+  /* Depth system (TASK-9routerX-ui-polish §2.1): the stock shadow utilities are
+     re-pointed at the per-theme --9x-shadow-* tokens below, so every component
+     that authors `shadow-sm` / `shadow-md` / `shadow-lg` inherits layered,
+     theme-aware depth instead of a hardcoded grey — dark gets black layers with
+     a faint accent glow, light gets soft blue-grey ones. One component tree,
+     two sets of values via variables. */
+  --shadow-sm: var(--9x-shadow-sm);
+  --shadow-md: var(--9x-shadow-md);
+  --shadow-lg: var(--9x-shadow-lg);
+
+  /* Radius scale (spec §0 "rapih"): one scale everywhere — 8px controls, 12px
+     small cards / inputs, 16px the panel radius the glyph theme already ships,
+     999px pills. Authored as runtime tokens so plain CSS can use them too. */
+  --radius-9x-sm: var(--9x-radius-sm);
+  --radius-9x-md: var(--9x-radius-md);
+  --radius-9x-lg: var(--9x-radius-lg);
+  --radius-9x-pill: var(--9x-radius-pill);
+
+  /* Fonts — the glyph pairing everywhere: Manrope for display and body text,
+     Geist Mono for everything numeric/status. Inter stays as the body
+     fallback while Manrope's latin-ext subset loads. */
+  --font-headline: "Manrope", "Inter", -apple-system, BlinkMacSystemFont,
+    system-ui, sans-serif;
+  --font-body: "Manrope", "Inter", -apple-system, BlinkMacSystemFont,
+    "SF Pro Text", system-ui, sans-serif;
+  --font-code: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular,
+    Menlo, monospace;
+  /* shadcn base font maps onto the glyph pairing — Manrope first, Inter as the
+     vendored fallback. The CLI default ('Inter Variable') would have pulled a
+     second copy of Inter from node_modules. */
+  --font-sans: "Manrope", "Inter", -apple-system, BlinkMacSystemFont, system-ui,
+    sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Light theme (default) — glyph light palette (spec §10.1).
+   ok/wait sit one step darker than the spec's #2e7d4f/#a86b12: both are used
+   as text on their own /10-/20 tinted badges, and only the darker values
+   clear 4.5:1 there (contrast audit, spec §10.2). */
+:root {
+  color-scheme: light;
+  --app-bg: #f6f6f3;
+  --app-bg-alt: #eef0f2;
+  --app-surface: #fbfbf9;
+  --app-surface-2: #eef0f3;
+  --app-surface-3: #e2e5ea;
+  --app-sidebar: rgba(250, 250, 248, 0.66); /* --9x-glass */
+  --app-border: rgba(22, 24, 29, 0.1); /* --9x-line */
+  --app-border-subtle: rgba(22, 24, 29, 0.06);
+  --app-text-main: #16181d; /* --9x-ink */
+  --app-text-muted: #4b525d;
+  --app-text-subtle: #646b76;
+  --app-primary: #2f5bd3; /* --9x-accent */
+  --app-primary-hover: #2447ad;
+  --app-danger: #b3362b; /* --9x-err */
+  --app-success: #256743; /* --9x-ok */
+  --app-warning: #84560c; /* --9x-wait */
+  --app-info: #2f5bd3; /* --9x-accent */
+
+  /* Glyph light tokens (askglyph light variant). */
+  --9x-bg: #f6f6f3;
+  --9x-ink: #16181d;
+  --9x-btn: #eceef2;
+  --9x-btn-ink: #0e0f11;
+  --9x-accent: #2f5bd3;
+  /* Text on accent/danger/success fills: white clears 4.5:1 on the deep
+     light accent, so light keeps white where dark needs near-black ink. */
+  --9x-accent-ink: #ffffff;
+  --9x-orange: #f97316;
+  --9x-line: rgba(22, 24, 29, 0.1);
+  --9x-glass: rgba(250, 250, 248, 0.66);
+  --9x-glass-strong: rgba(252, 252, 250, 0.86);
+  --9x-ok: #256743;
+  --9x-err: #b3362b;
+  --9x-wait: #84560c;
+  --9x-btn-hover: #e0e3e9;
+  --9x-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 10px 40px rgba(22, 24, 29, 0.08);
+  --9x-gridline: rgba(22, 24, 29, 0.045);
+  --9x-cell: 12px;
+  --9x-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Depth tokens (TASK-9routerX-ui-polish §2.1) — LIGHT: soft blue-grey layers,
+     never pure black. The 1px white inset stays at 55-60% so the sheen still
+     reads on pale surfaces, and it is always paired with a visible border (the
+     light-theme trap from spec §1.5.3: an invisible white inset). */
+  --9x-shadow-sm: 0 1px 2px rgba(22, 24, 29, 0.06), 0 1px 1px rgba(22, 24, 29, 0.04);
+  --9x-shadow-md: 0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 2px 6px -1px rgba(22, 24, 29, 0.08), 0 8px 20px -6px rgba(22, 24, 29, 0.1);
+  --9x-shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 4px 10px -2px rgba(22, 24, 29, 0.09), 0 16px 40px -8px rgba(22, 24, 29, 0.18);
+
+  /* Radius scale — same values in both themes (shape does not follow theme). */
+  --9x-radius-sm: 8px;
+  --9x-radius-md: 12px;
+  --9x-radius-lg: 16px;
+  --9x-radius-pill: 999px;
+
+  /* One standard motion pair: every component transition lands at the same
+     speed through this token (spec §2.1 --transition-standard). */
+  --9x-transition: 180ms var(--9x-ease);
+
+  /* Inset rest shadow for text fields (spec §2 inputs): a quiet recess that
+     reads on the pale light surfaces. Dark rebinds it below. */
+  --9x-inset-rest: inset 0 1px 2px rgba(22, 24, 29, 0.07);
+
+  /* Focus ring: a soft accent halo for controls that ring with box-shadow
+     (inputs inside overflow-clipped wrappers where an outline would clip,
+     spec §3.5.3j). Keyboard focus elsewhere keeps the 2px outline below. */
+  --9x-ring: 0 0 0 3px color-mix(in srgb, var(--9x-accent) 24%, transparent);
+
+  /* Elevation shadow actually resolved by the `shadow-[var(--shadow-elev)]`
+     utilities (modals, dropdowns, cards). The old --shadow-elevated name was
+     never referenced by a component. */
+  --shadow-elev: 0 12px 28px -4px rgba(22, 24, 29, 0.12),
+    0 2px 8px -2px rgba(22, 24, 29, 0.07);
+
+  /* Shared modal backdrop scrim, per theme: on light a dark 50% wash turned
+     the whole page into a dark island around the sheet, so light dims with
+     ink at a third instead; dark keeps its near-black scrim. */
+  --app-modal-scrim: rgba(22, 24, 29, 0.35);
+
+  /* Provider topology FX palette (ProviderTopologyCard SVG). Light theme
+     swaps the dark-tuned neon strokes for deeper tones of the same hues so
+     the beams stay visible on the light glass. */
+  --topo-halo: #0ea5e9;
+  --topo-plasma: #0284c7;
+  --topo-core: var(--9x-ink);
+  --topo-return: #059669;
+  --topo-spark: #a16207;
+  --topo-dot-fwd: #0284c7;
+  --topo-dot-ret: #059669;
+  --topo-absorb-a: #0891b2;
+  --topo-absorb-b: #ca8a04;
+  --topo-router-edge: #ca8a04;
+  --topo-router-ink: #854d0e;
+  --topo-glow-a: rgba(202, 138, 4, 0.45);
+  --topo-glow-b: rgba(2, 132, 199, 0.35);
+  --topo-core-shadow: 0 0 16px rgba(202, 138, 4, 0.3),
+    0 0 32px rgba(2, 132, 199, 0.22), inset 0 0 12px rgba(202, 138, 4, 0.18);
+  /* ── shadcn token surface (via shadcn-svelte, MIT) ──────────────────────
+     TASK-9routerX-shadcn-dashboard §0d.3: every shadcn variable is re-pointed
+     at an askglyph token — no hex in component files, and the theme toggle
+     re-resolves all of them automatically because the --9x-* and --app-* tokens
+     they reference are rebound per theme. LIGHT block: askglyph light values. */
+  --background: var(--9x-bg); /* #f6f6f3 */
+  --foreground: var(--9x-ink); /* #16181d */
+  --card: var(--app-surface); /* #fbfbf9 — solid card surface; glass panels keep --9x-glass where authored */
+  --card-foreground: var(--9x-ink);
+  --popover: var(--9x-glass-strong); /* overlays read as glass */
+  --popover-foreground: var(--9x-ink);
+  --primary: var(--9x-accent); /* #2f5bd3 */
+  --primary-foreground: var(--9x-accent-ink); /* white on the deep light accent */
+  --secondary: var(--9x-btn); /* #eceef2 */
+  --secondary-foreground: var(--9x-btn-ink);
+  --muted: var(--app-surface-2); /* #eef0f3 */
+  --muted-foreground: var(--app-text-muted); /* #4b525d */
+  --accent: var(--9x-btn-hover); /* #e0e3e9 hover surface */
+  --accent-foreground: var(--9x-ink);
+  --destructive: var(--9x-err); /* #b3362b */
+  --border: var(--9x-line);
+  --input: var(--9x-line);
+  --ring: var(--9x-accent);
+  --chart-1: var(--9x-chart-1);
+  --chart-2: var(--9x-chart-2);
+  --chart-3: var(--9x-chart-3);
+  --chart-4: var(--9x-chart-4);
+  --chart-5: var(--9x-chart-5);
+  --radius: 0.75rem; /* 12px — the glyph small-card radius; shadcn's calc scale lands md≈10px (controls) / xl≈17px (panels) */
+  --sidebar: var(--app-sidebar); /* glass */
+  --sidebar-foreground: var(--9x-ink);
+  --sidebar-primary: var(--9x-accent);
+  --sidebar-primary-foreground: var(--9x-accent-ink);
+  --sidebar-accent: var(--9x-btn-hover);
+  --sidebar-accent-foreground: var(--9x-ink);
+  --sidebar-border: var(--9x-line);
+  --sidebar-ring: var(--9x-accent);
+}
+
+/* Chart series palette — the shadcn --chart-1..5 slots filled with askglyph
+   hues. Light sits one step deeper per hue (AA contrast on pale glass, same
+   rule as --app-success/--app-warning); dark uses the glyph neon set. */
+:root {
+  --9x-chart-1: #2f5bd3; /* accent blue */
+  --9x-chart-2: #256743; /* ok green */
+  --9x-chart-3: #84560c; /* wait amber */
+  --9x-chart-4: #b3362b; /* err coral */
+  --9x-chart-5: #6d28d9; /* violet */
+}
+
+/* Dark theme — rebound to the glyph palette through the same plumbing. */
+.dark {
+  color-scheme: dark;
+  --app-bg: #0e0f11; /* --9x-bg */
+  --app-bg-alt: #121316;
+  --app-surface: #16181d; /* --9x-btn */
+  --app-surface-2: #1c1f25;
+  --app-surface-3: #262a31;
+  --app-sidebar: rgba(18, 19, 22, 0.62); /* --9x-glass */
+  --app-border: rgba(236, 238, 242, 0.1); /* --9x-line */
+  --app-border-subtle: rgba(236, 238, 242, 0.06);
+  --app-text-main: #eceef2; /* --9x-ink */
+  --app-text-muted: #9aa0ab;
+  /* One step lighter than the original #6f7683: subtle text must clear
+     4.5:1 on the lightest surface it sits on (surface-2, the inputs). */
+  --app-text-subtle: #7f8794;
+  --app-primary: #3b82f6; /* --9x-accent */
+  --app-primary-hover: #6ea3f8;
+  --app-danger: #ff7a6b; /* --9x-err */
+  --app-success: #5fc58a; /* --9x-ok */
+  --app-warning: #e0a447; /* --9x-wait */
+  --app-info: #3b82f6; /* --9x-accent */
+
+  /* Glyph dark tokens. These used to live unconditionally on :root, which is
+     exactly why light mode kept dark-only values; now they follow the toggle. */
+  --9x-bg: #0e0f11;
+  --9x-ink: #eceef2;
+  --9x-btn: #16181d;
+  --9x-btn-ink: #f6f6f3;
+  --9x-accent: #3b82f6;
+  /* Text on accent/danger/success fills: white is only 3.7:1 on the electric
+     blue and 2.6:1 on the coral error tone, so dark buttons carry near-black
+     ink (5.3:1 on the accent, 4.6:1 on the /90 hover, 7.7:1 on the coral). */
+  --9x-accent-ink: #0a0c10;
+  --9x-orange: #f97316;
+  --9x-line: rgba(236, 238, 242, 0.1);
+  --9x-glass: rgba(18, 19, 22, 0.62);
+  --9x-glass-strong: rgba(20, 21, 24, 0.88);
+  --9x-ok: #5fc58a;
+  --9x-err: #ff7a6b;
+  --9x-wait: #e0a447;
+  --9x-btn-hover: #1d2026;
+  --9x-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 10px 40px rgba(0, 0, 0, 0.45);
+  --9x-gridline: rgba(236, 238, 242, 0.035);
+
+  /* Depth tokens — DARK: black layers + a faint accent glow (spec §1.5.2). The
+     glow is color-mixed off the live accent token, so it follows the theme
+     instead of a hardcoded blue. */
+  --9x-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --9x-shadow-md: 0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 2px 8px rgba(0, 0, 0, 0.45),
+    0 0 14px -4px color-mix(in srgb, var(--9x-accent) 26%, transparent);
+  --9x-shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 6px 16px -4px rgba(0, 0, 0, 0.5),
+    0 0 24px -6px color-mix(in srgb, var(--9x-accent) 22%, transparent);
+  --9x-ring: 0 0 0 3px color-mix(in srgb, var(--9x-accent) 32%, transparent);
+  /* Dark fields recess with a black inset instead of the light grey one. */
+  --9x-inset-rest: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+
+  --shadow-elev: 0 12px 28px -4px rgba(0, 0, 0, 0.5),
+    0 2px 8px -2px rgba(0, 0, 0, 0.35);
+
+  /* Shared modal scrim: dark keeps the bg-black/50 wash it always had. */
+  --app-modal-scrim: rgba(0, 0, 0, 0.5);
+
+  /* Provider topology FX palette (dark-tuned neon, the original values). */
+  --topo-halo: #22d3ee;
+  --topo-plasma: #06b6d4;
+  --topo-core: #f8fafc;
+  --topo-return: #10b981;
+  --topo-spark: #fef08a;
+  --topo-dot-fwd: #38bdf8;
+  --topo-dot-ret: #34d399;
+  --topo-absorb-a: #22d3ee;
+  --topo-absorb-b: #facc15;
+  --topo-router-edge: #fde047;
+  --topo-router-ink: #fde047;
+  --topo-glow-a: rgba(253, 224, 71, 0.9);
+  --topo-glow-b: rgba(34, 211, 238, 0.9);
+  --topo-core-shadow: 0 0 16px rgba(253, 224, 71, 0.4),
+    0 0 32px rgba(34, 211, 238, 0.35), inset 0 0 12px rgba(250, 204, 21, 0.3);
+  /* ── shadcn token surface, DARK (via shadcn-svelte, MIT) ────────────────
+     Same var() plumbing as :root — the --9x-* and --app-* tokens they point at
+     are the glyph dark palette (#0e0f11 bg, #16181d surface, #3b82f6 accent)
+     rebound above, so no value is duplicated here. */
+  --background: var(--9x-bg);
+  --foreground: var(--9x-ink);
+  --card: var(--app-surface);
+  --card-foreground: var(--9x-ink);
+  --popover: var(--9x-glass-strong);
+  --popover-foreground: var(--9x-ink);
+  --primary: var(--9x-accent);
+  --primary-foreground: var(--9x-accent-ink);
+  --secondary: var(--9x-btn);
+  --secondary-foreground: var(--9x-btn-ink);
+  --muted: var(--app-surface-2);
+  --muted-foreground: var(--app-text-muted);
+  --accent: var(--9x-btn-hover);
+  --accent-foreground: var(--9x-ink);
+  --destructive: var(--9x-err);
+  --border: var(--9x-line);
+  --input: var(--9x-line);
+  --ring: var(--9x-accent);
+  --chart-1: var(--9x-chart-1);
+  --chart-2: var(--9x-chart-2);
+  --chart-3: var(--9x-chart-3);
+  --chart-4: var(--9x-chart-4);
+  --chart-5: var(--9x-chart-5);
+  --radius: 0.75rem;
+  --sidebar: var(--app-sidebar);
+  --sidebar-foreground: var(--9x-ink);
+  --sidebar-primary: var(--9x-accent);
+  --sidebar-primary-foreground: var(--9x-accent-ink);
+  --sidebar-accent: var(--9x-btn-hover);
+  --sidebar-accent-foreground: var(--9x-ink);
+  --sidebar-border: var(--9x-line);
+  --sidebar-ring: var(--9x-accent);
+}
+
+/* Chart series — DARK: the glyph neon tones (accent/ok/wait/err + violet). */
+.dark {
+  --9x-chart-1: #3b82f6;
+  --9x-chart-2: #5fc58a;
+  --9x-chart-3: #e0a447;
+  --9x-chart-4: #ff7a6b;
+  --9x-chart-5: #a78bfa;
+}
+
+/* Glyph light mode: opt-in via `.glyph-light` on <html> or any container
+   inside `.dark` — same values as the :root default, declared after .dark so
+   it also wins on <html> itself. */
+.glyph-light {
+  color-scheme: light;
+  --9x-bg: #f6f6f3;
+  --9x-ink: #16181d;
+  --9x-btn: #eceef2;
+  --9x-btn-ink: #0e0f11;
+  --9x-accent: #2f5bd3;
+  --9x-accent-ink: #ffffff;
+  --9x-line: rgba(22, 24, 29, 0.1);
+  --9x-glass: rgba(250, 250, 248, 0.66);
+  --9x-glass-strong: rgba(252, 252, 250, 0.86);
+  --9x-ok: #256743;
+  --9x-err: #b3362b;
+  --9x-wait: #84560c;
+  --9x-btn-hover: #e0e3e9;
+  --9x-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 10px 40px rgba(22, 24, 29, 0.08);
+  --9x-gridline: rgba(22, 24, 29, 0.045);
+  /* Depth follows the light palette here too: a light island inside .dark must
+     not inherit the dark black-shadow + accent-glow values. */
+  --9x-shadow-sm: 0 1px 2px rgba(22, 24, 29, 0.06), 0 1px 1px rgba(22, 24, 29, 0.04);
+  --9x-shadow-md: 0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 2px 6px -1px rgba(22, 24, 29, 0.08), 0 8px 20px -6px rgba(22, 24, 29, 0.1);
+  --9x-shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 4px 10px -2px rgba(22, 24, 29, 0.09), 0 16px 40px -8px rgba(22, 24, 29, 0.18);
+  --9x-ring: 0 0 0 3px color-mix(in srgb, var(--9x-accent) 24%, transparent);
+  --9x-inset-rest: inset 0 1px 2px rgba(22, 24, 29, 0.07);
+  --shadow-elev: 0 12px 28px -4px rgba(22, 24, 29, 0.12),
+    0 2px 8px -2px rgba(22, 24, 29, 0.07);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--app-bg);
+  color: var(--app-text-main);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Upstream landing grid background */
+.landing-grid {
+  background-image: linear-gradient(
+      to right,
+      var(--app-primary) 1px,
+      transparent 1px
+    ),
+    linear-gradient(to bottom, var(--app-primary) 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: 0.08;
+}
+.dark .landing-grid {
+  opacity: 0.04;
+}
+
+/*
+ * Self-hosted fonts.
+ *
+ * These used to come from fonts.googleapis.com / fonts.gstatic.com, which cost
+ * the first dashboard open two render-blocking stylesheets on a third-party
+ * origin — a blocked CDN stalled the first paint for 21 s in measurement, and
+ * a working one still cost a DNS lookup, a TLS handshake and two round trips
+ * to a host that has nothing to do with the gateway. The gateway serves its
+ * own assets from one origin, so the fonts come from there too.
+ *
+ * `font-display: swap` keeps the text readable while the font is still in
+ * flight: the dashboard shows real content immediately instead of invisible
+ * glyphs. The Material Symbols font is the one exception — it is `block`,
+ * because an icon rendered in the fallback face is a wrong glyph, and a row of
+ * wrong glyphs is worse than a row of blank ones for the moment the font
+ * arrives.
+ *
+ * The latin and latin-ext subsets are both shipped: the dashboard renders
+ * provider names and model ids verbatim, and those carry accented latin
+ * characters.
+ */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('./assets/fonts/inter-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('./assets/fonts/inter-latin-ext-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('./assets/fonts/jetbrains-mono-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 800;
+  src: url('./assets/fonts/jetbrains-mono-latin-ext-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/*
+ * Manrope — the glyph display face. Headline lowercase, light weights.
+ * The file Google serves is the same variable font for every requested
+ * weight (one URL per subset), so one face covers 300-600.
+ */
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  src: url('./assets/fonts/manrope-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Manrope';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  src: url('./assets/fonts/manrope-latin-ext-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/*
+ * Geist Mono — the glyph mono face. Every technical detail renders in it:
+ * tagline, version, status, keyboard hints, usage numbers.
+ */
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('./assets/fonts/geist-mono-latin-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('./assets/fonts/geist-mono-latin-ext-wght-normal.woff2') format('woff2-variations');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/*
+ * Material Symbols, instanced down to the axes the UI pins.
+ *
+ * The shipped file is the upstream variable font with its weight, grade and
+ * optical-size axes pinned to the values `web/src/index.css` sets on every
+ * icon anyway, and its fill axis kept at its full 0..1 range because the
+ * sidebar flips it. Every glyph Material Symbols defines is still in the
+ * file, so an icon name added to the catalog tomorrow renders — 3908 KB
+ * became 349 KB without removing a single one.
+ */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-display: block;
+  font-weight: 100 700;
+  src: url('./assets/material-symbols-outlined.woff2') format('woff2');
+}
+
+/* Custom scrollbar (kept from upstream custom-scrollbar utility) */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--app-surface-3);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--app-text-subtle);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--app-primary) 22%, transparent);
+}
+
+@keyframes disco-glow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(229, 106, 74, 0.6), 0 0 25px rgba(245, 158, 11, 0.3);
+  }
+  33% {
+    box-shadow: 0 0 18px rgba(16, 185, 129, 0.6), 0 0 28px rgba(59, 130, 246, 0.3);
+  }
+  66% {
+    box-shadow: 0 0 18px rgba(168, 85, 247, 0.6), 0 0 28px rgba(236, 72, 153, 0.3);
+  }
+}
+.animate-disco {
+  animation: disco-glow 3s infinite ease-in-out;
+}
+
+/* Material Symbols styling. This lives in `@layer base` on purpose: un-layered
+   author CSS outranks Tailwind's utilities in the cascade, so the 24px default
+   here used to bury every `text-[Npx]` size the components author on their
+   icons — the whole dashboard rendered every glyph at 24px and the bell's
+   16px SVG next to 24px glyphs was the visible "icon sizes don't match".
+   Inside `@layer base` the default still holds wherever a component authors
+   no size, and the per-context sizes (sidebar 20px, buttons 18px, badges
+   14px) actually apply. */
+@layer base {
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined', sans-serif;
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-feature-settings: 'liga';
+    font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+  .material-symbols-outlined.fill-1 {
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+  /* via shadcn-svelte (MIT): the shadcn base layer, written as plain CSS —
+     identical to the CLI's `@apply border-border outline-ring/50` etc., which
+     landed with stray CR bytes and failed the Tailwind parse. Values come
+     through the shadcn variables mapped to askglyph tokens above. */
+  * {
+    border-color: var(--border);
+    outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+  html {
+    font-family: var(--font-sans);
+  }
+}
+
+/* Topology: router card pulse + electric edge beam (matching upstream 9Router).
+   The pulse and the icon shake animate transform only. They used to animate a
+   three-layer box-shadow and a drop-shadow filter as well, which made the
+   browser re-rasterise a blurred shadow and a filter region on every frame for
+   as long as a request was in flight — measured at ~1.1 s of main-thread task
+   time per 5 s on the Usage page, of which this card was ~95% (issue #381
+   follow-up). */
+@keyframes topology-router-pulse {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+}
+@keyframes topology-router-icon-shake {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(-5deg) scale(1.08); }
+  75% { transform: rotate(5deg) scale(1.08); }
+}
+@keyframes topology-router-label-flicker {
+  0%, 100% { text-shadow: 0 0 6px var(--topo-glow-a), 0 0 12px var(--topo-glow-b); }
+  50% { text-shadow: 0 0 10px var(--topo-glow-a), 0 0 18px var(--topo-glow-b); }
+}
+@keyframes topology-edge-dash {
+  to { stroke-dashoffset: -36; }
+}
+@keyframes topology-edge-flicker {
+  0%, 100% { opacity: 0.85; }
+  40% { opacity: 1; }
+  55% { opacity: 0.55; }
+  70% { opacity: 0.95; }
+}
+.topology-router-core {
+  animation: topology-router-pulse 0.75s ease-in-out infinite !important;
+  border-color: var(--topo-router-edge) !important;
+  /* Static glow: painted once instead of on every frame of the pulse. */
+  box-shadow: var(--topo-core-shadow);
+}
+/* Token-driven FX strokes/fills for the topology SVG: the literal neon hex
+   values were tuned for dark and vanished on the light glass, so both themes
+   pick their own tone per hue (see --topo-* on :root/.dark). */
+.topology-stroke-halo { stroke: var(--topo-halo); }
+.topology-stroke-plasma { stroke: var(--topo-plasma); }
+.topology-stroke-core { stroke: var(--topo-core); }
+.topology-stroke-return { stroke: var(--topo-return); }
+.topology-stroke-spark { stroke: var(--topo-spark); }
+.topology-stroke-warn { stroke: var(--color-warning); }
+.topology-stroke-err { stroke: var(--color-danger); }
+.topology-stroke-absorb-a { stroke: var(--topo-absorb-a); }
+.topology-stroke-absorb-b { stroke: var(--topo-absorb-b); }
+.topology-fill-fwd { fill: var(--topo-dot-fwd); }
+.topology-fill-ret { fill: var(--topo-dot-ret); }
+.topology-router-ink { color: var(--topo-router-ink); }
+.topology-router-icon {
+  animation: topology-router-icon-shake 0.45s ease-in-out infinite;
+}
+.topology-router-label {
+  animation: topology-router-label-flicker 0.7s ease-in-out infinite;
+}
+.topology-edge-kame {
+  stroke-dasharray: 8 6;
+  animation: topology-edge-dash 0.22s linear infinite;
+}
+.topology-edge-halo {
+  animation: topology-edge-flicker 0.18s steps(2) infinite;
+}
+.topology-edge-plasma {
+  stroke-dasharray: 14 10;
+  animation: topology-edge-dash 0.18s linear infinite, topology-edge-flicker 0.22s steps(3) infinite;
+}
+
+/* Bidirectional neural streams & shockwave impacts */
+@keyframes topology-edge-dash-reverse {
+  to { stroke-dashoffset: 36; }
+}
+@keyframes topology-node-bounce {
+  0%, 100% {
+    transform: translate(-50%, -50%) scale(1.02);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+}
+.topology-edge-return {
+  stroke-dasharray: 6 8;
+  animation: topology-edge-dash-reverse 0.22s linear infinite, topology-edge-flicker 0.28s steps(3) infinite;
+}
+.topology-node-active-bounce {
+  animation: topology-node-bounce 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) infinite !important;
+}
+
+/* Changelog markdown body styles */
+.changelog-body h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--color-border-subtle, rgba(125, 125, 125, 0.2));
+}
+.changelog-body h1:first-child {
+  margin-top: 0;
+}
+.changelog-body h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.5rem;
+  color: var(--color-primary, #e56a4a);
+}
+.changelog-body h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0.85rem 0 0.4rem;
+}
+.changelog-body ul {
+  list-style-type: disc;
+  padding-left: 1.4rem;
+  margin: 0.5rem 0;
+}
+.changelog-body li {
+  margin: 0.3rem 0;
+  line-height: 1.6;
+}
+.changelog-body p {
+  margin: 0.5rem 0;
+  line-height: 1.6;
+}
+.changelog-body code {
+  background: var(--color-surface-2, rgba(125, 125, 125, 0.12));
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-family: monospace;
+}
+.changelog-body pre {
+  background: var(--color-surface-2, rgba(125, 125, 125, 0.12));
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+.changelog-body pre code {
+  background: transparent;
+  padding: 0;
+}
+.changelog-body a {
+  color: var(--color-primary, #e56a4a);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.changelog-body a:hover {
+  opacity: 0.85;
+}
+.changelog-body hr {
+  border: none;
+  border-top: 1px solid var(--color-border-subtle, rgba(125, 125, 125, 0.2));
+  margin: 1.5rem 0;
+}
+.changelog-body strong {
+  font-weight: 600;
+}
+
+/* Combo flow — the combo's members as one ordered list.
+
+   An orbit could not show the two things this card is for: which member is tried
+   first, and what each member is. So the card is a numbered list in the combo's
+   own order, one row per member with its full provider, model, status and
+   latency. A single column also means the text has the whole card width on a
+   phone, which is where the row layout kept colliding. */
+.cf-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.6rem 0.7rem;
+  border-bottom: 1px solid var(--color-border, #334155);
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.08), transparent 60%);
+}
+.cf-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.cf-kicker {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #94a3b8);
+}
+.cf-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #22d3ee;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cf-strategy {
+  border-radius: 999px;
+  border: 1px solid rgba(167, 139, 250, 0.5);
+  background: rgba(167, 139, 250, 0.14);
+  color: #a78bfa;
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.08rem 0.4rem;
+  text-transform: uppercase;
+}
+.cf-counters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.cf-counters span {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.56rem;
+  font-weight: 700;
+  padding: 0.1rem 0.42rem;
+}
+.cf-counters span[data-kind='trying'] {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #f59e0b;
+}
+.cf-counters span[data-kind='connected'] {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #10b981;
+}
+.cf-counters span[data-kind='failed'] {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #ef4444;
+}
+.cf-counters span[data-kind='idle'] {
+  background: rgba(100, 116, 139, 0.14);
+  border-color: rgba(100, 116, 139, 0.35);
+  color: var(--color-text-muted, #94a3b8);
+}
+/* the route: gateway -> combo */
+.cf-route {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.6rem 0.4rem;
+  background-image: radial-gradient(rgba(148, 163, 184, 0.16) 1px, transparent 1px);
+  background-size: 13px 13px;
+}
+.cf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 0.55rem;
+  border: 1.4px solid var(--color-border, #334155);
+  background: rgba(15, 23, 42, 0.9);
+  padding: 0.25rem 0.4rem;
+  min-width: 0;
+}
+.cf-chip img {
+  height: 0.9rem;
+  width: 0.9rem;
+  object-fit: contain;
+  flex: none;
+}
+.cf-chip span {
+  font-size: 0.6rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cf-chip[data-role='router'] {
+  border-color: #facc15;
+  color: #facc15;
+  flex: none;
+}
+.cf-chip[data-role='router'][data-state='connected'] {
+  border-color: #10b981;
+  color: #10b981;
+}
+.cf-chip[data-role='router'][data-state='failed'] {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+.cf-chip[data-role='combo'] {
+  border-color: #22d3ee;
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.14), rgba(167, 139, 250, 0.18));
+  flex: 1 1 auto;
+}
+.cf-chip-icon {
+  color: #22d3ee;
+  font-size: 0.95rem;
+  flex: none;
+}
+.cf-chip-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cf-chip-text strong {
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: #22d3ee;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cf-chip-text small {
+  font-size: 0.5rem;
+  color: var(--color-text-muted, #94a3b8);
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* the hop: a line with a dot travelling from the gateway into the combo */
+.cf-route-arrow {
+  position: relative;
+  flex: none;
+  height: 12px;
+  width: 1.6rem;
+  color: #facc15;
+}
+.cf-route-arrow[data-state='connected'] {
+  color: #10b981;
+}
+.cf-route-arrow[data-state='trying'] {
+  color: #f59e0b;
+}
+.cf-route-arrow[data-state='failed'] {
+  color: #ef4444;
+}
+.cf-route-arrow svg {
+  height: 100%;
+  width: 100%;
+  overflow: visible;
+}
+.cf-route-arrow path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+/* The dot rides the hop as a composited translate, and only while a member is
+   actually being tried. The previous version was an SVG <animate> on cx plus a
+   drop-shadow filter: both are main-thread paint work that ran at 60fps for as
+   long as the card was mounted, including once the run had already finished
+   (issue #381 follow-up). */
+.cf-dot {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 5px;
+  width: 5px;
+  margin-top: -2.5px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: cf-hop 1.1s linear infinite;
+}
+@keyframes cf-hop {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(1.6rem - 5px));
+  }
+}
+/* the ordered list: a rail down the numbers, one row per member */
+.cf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0 0.6rem 0.4rem;
+  list-style: none;
+  counter-reset: none;
+}
+.cf-row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+  padding-bottom: 0.3rem;
+}
+/* the rail: one continuous line behind the numbers */
+.cf-order {
+  position: relative;
+  flex: none;
+  width: 1.35rem;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 0.35rem;
+  font-variant-numeric: tabular-nums;
+}
+.cf-order::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1.4px;
+  margin-left: -0.7px;
+  background: rgba(148, 163, 184, 0.35);
+}
+.cf-row:first-child .cf-order::before {
+  top: 0.55rem;
+}
+.cf-row:last-child .cf-order::before {
+  bottom: calc(100% - 0.75rem);
+}
+/* the number sits on the rail as a small disc */
+.cf-order-disc {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1rem;
+  min-width: 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: var(--color-surface, #0f172a);
+  font-size: 0.52rem;
+  font-weight: 700;
+  color: var(--color-text-muted, #94a3b8);
+}
+.cf-row[data-status='trying'] .cf-order-disc {
+  border-color: #f59e0b;
+  color: #f59e0b;
+}
+.cf-row[data-status='connected'] .cf-order-disc {
+  border-color: #10b981;
+  color: #10b981;
+}
+.cf-row[data-status='failed'] .cf-order-disc {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+.cf-row[data-used='false'] {
+  opacity: 0.62;
+}
+.cf-row-card {
+  flex: 1;
+  min-width: 0;
+  border-radius: 0.55rem;
+  border: 1px solid var(--color-border, #334155);
+  background: var(--color-surface, rgba(15, 23, 42, 0.6));
+  padding: 0.35rem 0.45rem;
+}
+.cf-row[data-status='trying'] .cf-row-card {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.09);
+}
+.cf-row[data-status='connected'] .cf-row-card {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+}
+.cf-row[data-status='failed'] .cf-row-card {
+  border-color: rgba(239, 68, 68, 0.75);
+  background: rgba(239, 68, 68, 0.06);
+}
+.cf-row-main {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.cf-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: 1.15rem;
+  width: 1.15rem;
+  border-radius: 0.32rem;
+  background: color-mix(in srgb, var(--tint, #64748b) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tint, #64748b) 55%, transparent);
+  color: var(--tint, #94a3b8);
+  font-size: 0.48rem;
+  font-weight: 700;
+}
+.cf-row-names {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.cf-row-names strong {
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-text, #e2e8f0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cf-row-names small {
+  font-size: 0.55rem;
+  line-height: 1.2;
+  color: var(--color-text-muted, #94a3b8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cf-latency {
+  flex: none;
+  border-radius: 0.28rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--color-text-muted, #94a3b8);
+  font-size: 0.52rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 0.02rem 0.25rem;
+}
+.cf-row[data-status='connected'] .cf-latency {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+.cf-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.12rem;
+  flex: none;
+  color: var(--color-text-muted, #94a3b8);
+}
+.cf-status-text {
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.cf-row[data-status='trying'] .cf-status {
+  color: #f59e0b;
+}
+.cf-row[data-status='connected'] .cf-status {
+  color: #10b981;
+}
+.cf-row[data-status='failed'] .cf-status {
+  color: #ef4444;
+}
+.cf-ico {
+  font-size: 0.78rem;
+}
+.cf-spin {
+  animation: cf-rotate 0.9s linear infinite;
+  transform-origin: center;
+}
+@keyframes cf-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* what happens next: where a refusal hands off, or where the run stopped */
+.cf-handoff {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin: 0.22rem 0 0;
+  padding-top: 0.22rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.3);
+  font-size: 0.52rem;
+  color: var(--color-text-muted, #94a3b8);
+  line-height: 1.25;
+}
+.cf-row[data-status='failed'] .cf-handoff {
+  color: #f87171;
+}
+.cf-handoff-ok {
+  color: #10b981;
+  border-top-color: rgba(16, 185, 129, 0.3);
+}
+.cf-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+  padding: 0.45rem 0.7rem 0.55rem;
+  border-top: 1px solid var(--color-border, #334155);
+  font-size: 0.55rem;
+  color: var(--color-text-muted, #94a3b8);
+}
+.cf-legend span::before {
+  content: '';
+  display: inline-block;
+  height: 5px;
+  width: 5px;
+  border-radius: 999px;
+  margin-right: 0.25rem;
+  background: #64748b;
+  vertical-align: middle;
+}
+.cf-legend span[data-kind='trying']::before {
+  background: #f59e0b;
+}
+.cf-legend span[data-kind='connected']::before {
+  background: #10b981;
+}
+.cf-legend span[data-kind='failed']::before {
+  background: #ef4444;
+}
+
+/*
+ * Animation level (Settings > Display).
+ *
+ * One attribute on <html> — set by lib/displayPrefs.ts — decides how much the
+ * dashboard animates. The rules are global on purpose: the components carry
+ * ~400 animation/transition/blur utilities between them, and threading a
+ * per-level class through every one of them would be a second convention that
+ * drifts the first time someone adds a spinner.
+ *
+ * `full` and `default` add nothing here, so an untouched install keeps exactly
+ * the behaviour it shipped with. `minimal` drops the blur and the transitions
+ * (state changes land instantly) but leaves looping animations alone, so a
+ * loading spinner still reads as "working". `off` stops those too: an icon that
+ * used to rotate now sits still next to its "Testing…" label, which is the
+ * honest thing to show when the operator asked for no motion.
+ */
+:root[data-anim-level='minimal'] *,
+:root[data-anim-level='off'] * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+
+:root[data-anim-level='off'] *,
+:root[data-anim-level='off'] *::before,
+:root[data-anim-level='off'] *::after {
+  animation: none !important;
+}
+
+/* The rotate in the spinner is a transform, not a keyframe on every surface:
+   Tailwind's animate-spin also sets an animation, so the rule above already
+   stops it. This keeps a spinner that is rotated by an inline style still. */
+:root[data-anim-level='off'] .animate-spin,
+:root[data-anim-level='off'] .animate-ping,
+:root[data-anim-level='off'] .animate-pulse,
+:root[data-anim-level='off'] .animate-bounce {
+  animation: none !important;
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+/*
+ * 9RouterX glyph dashboard reskin — FASE UI-GLEPH commit 3 (spec TASK-9routerX-ui-glyph.md §4).
+ *
+ * Skin only: nothing here changes behaviour. Every rule restyles markup that
+ * already exists — Card.svelte carries `.glyph-surface`, the usage tables carry
+ * `.glyph-table` with `data-label` cells, sidebar items carry `.glyph-nav-*`, the
+ * quota bars carry `.glyph-bar-*`, the shared modal carries `.glyph-modal`.
+ *
+ * Written as plain CSS on purpose: un-layered rules win over Tailwind's
+ * `@layer utilities`, so one selector here reskins every view at once without
+ * touching a single handler, store or API call.
+ *
+ * Token reach: the glyph values arrive through the existing `--app-*`
+ * plumbing in BOTH themes — the theme-tokens block rebinds `--app-*` to the
+ * 9x palette per theme (`--app-surface` = button surface, `--app-border` =
+ * --9x-line, `--app-primary` = --9x-accent, `--app-danger` = --9x-err, ...).
+ * The raw `--9x-*` tokens are rebound per theme too, so the login page and
+ * the ASCII background (which read them directly) follow the toggle.
+ */
+
+/* --- Cards & panels: glass surface, hairline border, radius 16px ---------- */
+/* Paint the literal glyph glass tokens, not --app-surface: the dark theme
+   rebinds --app-surface to an opaque hex (#16181d), and an opaque fill cancels
+   the backdrop-filter behind it — the panel renders solid instead of frosted.
+   The --9x-glass tokens stay translucent in both themes, so the blur lands. */
+.glyph-surface {
+  background: var(--9x-glass-strong);
+  border: 1px solid var(--9x-line);
+  border-radius: var(--9x-radius-lg);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+
+  box-shadow: var(--9x-shadow);
+}
+
+/* --- Sidebar nav items: transparent rail, glass pill for the active one ---- */
+.glyph-nav-item,
+.glyph-nav-active {
+  border: 1px solid transparent;
+  transition:
+    background-color var(--9x-transition),
+    border-color var(--9x-transition),
+    color var(--9x-transition);
+}
+.glyph-nav-item {
+  color: var(--app-text-muted);
+}
+.glyph-nav-item:hover {
+  background: var(--app-surface-2);
+  color: var(--app-text-main);
+}
+.glyph-nav-active {
+  position: relative;
+  color: var(--app-text-main);
+  font-weight: 500;
+  background: var(--app-surface);
+  border-color: var(--app-border);
+}
+.dark .glyph-nav-active {
+  background: var(--9x-glass-strong);
+  box-shadow: var(--9x-shadow);
+}
+/* The 2px accent bar of the glass pill. */
+.glyph-nav-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 60%;
+  border-radius: 9999px;
+  background: var(--app-primary);
+}
+
+/* --- Buttons: pill, glyph surfaces, hover lift ---------------------------- */
+/* Scoped to real controls (`button`/`a`) so decorative elements that happen to
+   carry the same utility (toggle switches, heatmap cells, badges) are not
+   reshaped. Un-layered rules below override each utility's radius/shadow.
+   Accent/danger/success fills take --9x-accent-ink, not white: white on the
+   dark accent is 3.7:1 and on the dark error tone 2.6:1 (spec §10.2). */
+button:is(
+    .bg-brand-500,
+    .bg-brand-600,
+    .bg-primary,
+    .bg-primary-hover,
+    .bg-blue-500
+  ),
+a:is(
+    .bg-brand-500,
+    .bg-brand-600,
+    .bg-primary,
+    .bg-primary-hover,
+    .bg-blue-500
+  ) {
+  border-radius: 9999px;
+  background: var(--app-primary);
+  border: 1px solid transparent;
+  color: var(--9x-accent-ink);
+  transition: var(--9x-transition);
+}
+/* Danger and success verbs keep their own status fills but get the same
+   readable ink (white on the dark coral/success tones is 2.6:1 / 2.1:1). */
+button:is(.bg-danger),
+a:is(.bg-danger) {
+  border-radius: 9999px;
+  background: var(--app-danger);
+  border: 1px solid transparent;
+  color: var(--9x-accent-ink);
+}
+button:is(.bg-success),
+a:is(.bg-success) {
+  border-radius: 9999px;
+  background: var(--app-success);
+  border: 1px solid transparent;
+  color: var(--9x-accent-ink);
+}
+button:is(.bg-surface, .bg-surface-2, .bg-surface-3),
+a:is(.bg-surface, .bg-surface-2, .bg-surface-3) {
+  border-radius: 9999px;
+  background: var(--9x-btn);
+  border: 1px solid var(--9x-line);
+  color: var(--9x-btn-ink);
+  transition: var(--9x-transition);
+}
+/* Hover lift (spec §0): translateY(-1px) + the shadow grows a step. Only under
+   hover-capable pointers, so a touch screen never sticks the raised state. */
+@media (hover: hover) {
+  button:is(.bg-brand-500, .bg-brand-600, .bg-primary, .bg-primary-hover):hover:not(:disabled),
+  a:is(.bg-brand-500, .bg-brand-600, .bg-primary, .bg-primary-hover):hover {
+    transform: translateY(-1px);
+    box-shadow: var(--9x-shadow-md);
+  }
+  button:is(.bg-surface, .bg-surface-2, .bg-surface-3):hover:not(:disabled),
+  a:is(.bg-surface, .bg-surface-2, .bg-surface-3):hover {
+    transform: translateY(-1px);
+    box-shadow: var(--9x-shadow-md);
+  }
+}
+/* Active press (spec §2 buttons): the button sinks, the shadow drops back to
+   the small step — transform/shadow only, no layout shift. */
+button:is(.bg-brand-500, .bg-brand-600, .bg-primary, .bg-primary-hover):active:not(:disabled),
+a:is(.bg-brand-500, .bg-brand-600, .bg-primary, .bg-primary-hover):active,
+button:is(.bg-surface, .bg-surface-2, .bg-surface-3):active:not(:disabled),
+a:is(.bg-surface, .bg-surface-2, .bg-surface-3):active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: var(--9x-shadow-sm);
+}
+/* Danger verbs carry the glyph error tone. */
+button:is(.text-danger, .text-red-500, .text-red-600),
+.dark button.text-red-400,
+a:is(.text-danger, .text-red-500, .text-red-600) {
+  color: var(--app-danger);
+}
+
+/* --- Switch track boundary -------------------------------------------------- */
+/* The un-layered glyph button rules above repaint every `button.bg-surface-3` —
+   including the shared switch — with the button background and a --9x-line
+   border, so any border utility on the switch itself never applies. The OFF
+   track needs a firmer boundary than that hairline: on a light card the
+   --9x-line border is 1.3:1 and the track dissolves (spec §1.5.3 light trap).
+   Scoped by aria-checked so the ON accent track keeps its clean edge; dark
+   keeps the base hairline it shipped with. */
+button[role='switch'][aria-checked='false']:not(:disabled) {
+  border-color: color-mix(in srgb, var(--9x-ink) 28%, transparent);
+}
+.dark button[role='switch'][aria-checked='false']:not(:disabled) {
+  border-color: var(--9x-line);
+}
+button[role='switch'][aria-checked='true']:not(:disabled) {
+  border-color: transparent;
+}
+
+/* --- Quota / usage progress bars ------------------------------------------ */
+.glyph-bar-track {
+  border: 1px solid var(--app-border);
+  background: transparent;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+.glyph-bar-fill {
+  background: var(--app-primary);
+  border-radius: 9999px;
+  transition: width 320ms var(--9x-ease);
+}
+.glyph-bar-fill.glyph-bar-err {
+  background: var(--app-danger);
+}
+
+/* --- Focus ring: visible, accent, 2px -------------------------------------- */
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--app-primary);
+  outline-offset: 2px;
+}
+
+/* --- Native select popups follow the theme ----------------------------------
+   Without an explicit scheme the UA renders a WHITE option list with light
+   text in dark mode — unreadable. Chromium styles the popup + options from
+   the select's color-scheme and computed colors; explicit values make both
+   themes legible. */
+select {
+  color-scheme: inherit;
+}
+.dark select {
+  color-scheme: dark;
+  background-color: var(--app-surface);
+  color: var(--app-text-main);
+}
+.dark select option,
+.dark select optgroup {
+  background-color: #16181d;
+  color: #eceef2;
+}
+:root:not(.dark) select {
+  color-scheme: light;
+}
+:root:not(.dark) select option,
+:root:not(.dark) select optgroup {
+  background-color: var(--app-surface);
+  color: var(--app-text-main);
+}
+
+/* --- Native checkboxes & radios: accent + tick pop ------------------------- */
+/* adapted from uiverse.io/sssynk/tall-octopus-55 (MIT) — the tick-pop check —
+   re-painted with the theme accent. Lives in `@layer base` on purpose: per
+   element `accent-*` utilities (a green success checkbox) must keep beating
+   this default, the same way the Material Symbols base rules do. Only the
+   color, the cursor and the 120ms pop are global — size classes stay with the
+   component that authored them, so no layout moves. */
+@layer base {
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: var(--app-primary);
+    cursor: pointer;
+  }
+  input[type='checkbox']:checked,
+  input[type='radio']:checked {
+    animation: x9-pop 120ms var(--9x-ease);
+  }
+}
+@keyframes x9-pop {
+  from {
+    transform: scale(0.6);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+/* --- Text fields: one depth treatment --------------------------------------- */
+/* adapted from uiverse.io/andrew-demchenk0/light-lionfish-40 (MIT) — quiet
+   field with an accent focus ring. The class only carries the depth behaviour
+   (inset rest shadow, border + ring transition, accent focus): background,
+   radius and font classes keep coming from the component, so it composes with
+   any field. `:focus-visible` for text inputs also fires on programmatic and
+   mouse focus, which is what an input wants — the focus state IS the ring. */
+.x9-field {
+  transition:
+    border-color var(--9x-transition),
+    box-shadow var(--9x-transition),
+    background-color var(--9x-transition);
+  box-shadow: var(--9x-inset-rest);
+}
+.x9-field:focus-visible {
+  outline: none;
+  border-color: var(--app-primary);
+  box-shadow: var(--9x-ring), var(--9x-inset-rest);
+}
+.x9-field::placeholder {
+  color: color-mix(in srgb, var(--app-text-muted) 80%, transparent);
+}
+
+/* --- Tables: mono uppercase column headers, hairline rows ------------------ */
+table.glyph-table thead th {
+  font-family: var(--font-code);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--app-text-muted);
+}
+
+/* Row hover (spec §3 "tabel & barisnya — hover row halus"): one gentle surface
+   tint for every glyph table, instead of each view authoring its own. Hover
+   only — a touch screen never sticks the tint. The transition is on
+   background-color only, so no layout ever moves. */
+@media (hover: hover) {
+  table.glyph-table tbody tr {
+    transition: background-color var(--9x-transition);
+  }
+  table.glyph-table tbody tr:hover {
+    background: color-mix(in srgb, var(--app-surface-2) 55%, transparent);
+  }
+}
+
+/* --- Card hover lift (spec §3) ---------------------------------------------- */
+/* Opt-in for interactive/summary cards (dashboard KPI tiles, provider cards).
+   On hover the card rises 2px and the shadow steps up a level — transform and
+   box-shadow only, so the grid never reflows; the un-layered rule is what lets
+   the hover shadow beat `.glyph-surface`'s rest shadow. Hover-capable pointers
+   only, so a touch screen never sticks the raised state. */
+@media (hover: hover) {
+  .glyph-lift {
+    transition:
+      transform var(--9x-transition),
+      box-shadow var(--9x-transition),
+      background-color var(--9x-transition),
+      border-color var(--9x-transition);
+  }
+  .glyph-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--9x-shadow-md);
+  }
+}
+
+/* --- Card headers: hairline + accent tick (spec §3) ------------------------- */
+/* The Card component's title row carries this class: a subtle hairline closes
+   the header off from the body, and a short accent tick marks the left edge —
+   the "aksen tipis" from the spec, drawn as a ::after so no markup changes. */
+.glyph-card-head {
+  position: relative;
+  border-bottom: 1px solid var(--app-border-subtle);
+  padding-bottom: 0.75rem;
+}
+.glyph-card-head::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 2.5rem;
+  height: 1px;
+  border-radius: 999px;
+  background: var(--app-primary);
+  opacity: 0.65;
+}
+
+/* --- Tooltips: dark, delayed, both themes (spec §2) -------------------------- */
+/* adapted from uiverse.io/mrhyddenn/slippery-bear-64 (MIT) — the dark hover
+   tooltip. One fixed dark surface in BOTH themes (spec: #0B1120/90), so the
+   tooltip never becomes a light-theme contrast trap; its text is fixed light
+   ink because the surface under it is fixed dark. Hover-capable pointers only
+   (touch devices get the labels/aria instead), 300ms show delay, immediate
+   fade-out. The placement variants are the edge guard: a control sitting on a
+   screen edge opts into the side that opens into the viewport.
+   Focus-visible also shows it, so keyboard users get the same hint. */
+.x9-tip {
+  position: relative;
+}
+.x9-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 100;
+  padding: 4px 8px;
+  border-radius: var(--9x-radius-sm);
+  border: 1px solid rgba(236, 238, 242, 0.14);
+  background: rgba(11, 17, 32, 0.9);
+  color: #f0f2f6;
+  font-family: var(--font-code);
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  box-shadow: var(--9x-shadow-lg);
+  /* Default placement: centered above the trigger. */
+  bottom: calc(100% + 6px);
+  left: 50%;
+  translate: -50% 0;
+}
+@media (hover: hover) {
+  .x9-tip:hover::after,
+  .x9-tip:focus-visible::after {
+    opacity: 1;
+    transition-delay: 300ms;
+  }
+}
+/* Placement variants (the anti-overlap guard). */
+.x9-tip-r::after {
+  bottom: auto;
+  left: calc(100% + 8px);
+  top: 50%;
+  translate: 0 -50%;
+}
+.x9-tip-b::after {
+  bottom: auto;
+  top: calc(100% + 6px);
+}
+.x9-tip-l::after {
+  bottom: auto;
+  left: auto;
+  right: calc(100% + 8px);
+  top: 50%;
+  translate: 0 -50%;
+}
+/* Below, anchored to the trigger's right edge — for controls at the top-right
+   corner of the screen, where a centered tooltip would clip. */
+.x9-tip-br::after {
+  bottom: auto;
+  left: auto;
+  right: 0;
+  top: calc(100% + 6px);
+  translate: 0 0;
+}
+
+/* Sidebar rail tooltips: the sidebar collapses in two ways — the operator's
+   icon-rail preference (`.rail-mode`, any width) and the 768-1023 tablet
+   collapse (CSS-only, so markup cannot know). The items therefore carry
+   `data-tip` + `.glyph-rail-tip` unconditionally, and the reveal is gated to
+   exactly the two collapsed states; the full sidebar never pops tooltips over
+   its visible labels. Placement mirrors .x9-tip-r: the rail sits on the left
+   edge, so the bubble opens right, into the viewport. */
+.glyph-rail-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 100;
+  padding: 4px 8px;
+  border-radius: var(--9x-radius-sm);
+  border: 1px solid rgba(236, 238, 242, 0.14);
+  background: rgba(11, 17, 32, 0.9);
+  color: #f0f2f6;
+  font-family: var(--font-code);
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  box-shadow: var(--9x-shadow-lg);
+  left: calc(100% + 8px);
+  top: 50%;
+  translate: 0 -50%;
+}
+@media (hover: hover) {
+  aside.glyph-sidebar.rail-mode .glyph-rail-tip:hover::after,
+  aside.glyph-sidebar.rail-mode .glyph-rail-tip:focus-visible::after {
+    opacity: 1;
+    transition-delay: 300ms;
+  }
+}
+@media (min-width: 768px) and (max-width: 1023px) and (hover: hover) {
+  aside.glyph-sidebar .glyph-rail-tip:hover::after,
+  aside.glyph-sidebar .glyph-rail-tip:focus-visible::after {
+    opacity: 1;
+    transition-delay: 300ms;
+  }
+}
+
+/* --- Dropdown panel: scale-fade from its origin (spec §3) -------------------- */
+/* adapted from uiverse.io/andrew-demchenk0/light-lionfish-40 (MIT) — the
+   fade-and-rise entrance family. 140ms, transform/opacity only. The origin
+   follows the panel's alignment (Menu writes data-align), so it grows out of
+   the trigger edge it is anchored to; the panel above the trigger (flipped by
+   menuPosition) sets its origin at the bottom edge via data-flip. */
+@keyframes x9-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.x9-menu-panel {
+  animation: x9-menu-in 140ms var(--9x-ease);
+  transform-origin: top right;
+}
+.x9-menu-panel[data-align='left'] {
+  transform-origin: top left;
+}
+.x9-menu-panel[data-flip='true'] {
+  transform-origin: bottom right;
+}
+.x9-menu-panel[data-align='left'][data-flip='true'] {
+  transform-origin: bottom left;
+}
+
+/* --- Sidebar: glass rail over the ASCII map (spec §4) ---------------------- */
+/* Same reason as the cards: the rail paints the translucent --9x-glass token
+   directly so the backdrop-filter blurs the map behind it instead of being
+   cancelled by an opaque fill. */
+/* Owner request: no visible scrollbar capsule at the sidebar/drawer bottom —
+   the rounded bar users kept flagging is the Chromium overlay thumb of the
+   nav's vertical scroll. The lists stay fully scrollable (wheel, touch,
+   keyboard) but the bar itself is hidden. */
+aside.glyph-sidebar {
+  scrollbar-width: none;
+}
+aside.glyph-sidebar::-webkit-scrollbar,
+aside.glyph-sidebar *::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+aside.glyph-sidebar {
+  background: var(--9x-glass);
+  /* Owner request: the drawer must never scroll sideways — a wide child
+     (long brand line, summary card) showed a horizontal scrollbar strip at
+     the bottom of the phone drawer. Overflowing content clips instead. */
+  overflow-x: hidden;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  /* The rail tooltips are ::after bubbles at left: 100% — outside the aside's
+     own box, which the overflow-hidden utility would clip. `clip` keeps the
+     same clipping semantics but lets the paint extend 220px past the edge, so
+     a tooltip fits; everything the rail ever hid is hidden with display:none,
+     not overflow, so nothing else starts leaking. */
+  overflow: clip;
+  overflow-clip-margin: 220px;
+
+}
+
+/* --- Toasts: small glass card, bottom-right -------------------------------- */
+.glyph-toast {
+  position: relative;
+  overflow: hidden;
+  background: var(--9x-glass);
+  border: 1px solid var(--9x-line);
+  border-radius: var(--9x-radius-lg);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+
+  box-shadow: var(--9x-shadow);
+}
+
+/* Thin accent progress line along the toast's bottom edge (spec §2 toasts).
+   `currentColor` picks up the status tone the toast wrapper paints, so the
+   accent follows success/error/warning/info without a second rule. The bar
+   drains over the store's own duration (--toast-dur is set from the
+   notification's duration field); a phone's stack auto-dismisses at a flat 4s
+   (Toasts.svelte), so the phone media query drains it on that clock instead.
+   transform-only animation. */
+.glyph-toast-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  background: currentColor;
+  opacity: 0.55;
+  transform-origin: left center;
+  animation: x9-toast-drain linear forwards;
+  animation-duration: var(--toast-dur, 5000ms);
+  pointer-events: none;
+}
+@keyframes x9-toast-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+@media (max-width: 767px) {
+  .glyph-toast-progress {
+    animation-duration: 4000ms;
+  }
+}
+
+/* --- Bottom sheet on mobile: the shared modal slides from the bottom ------- */
+@keyframes glyph-sheet-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* --- Responsive: spec §5.4 -------------------------------------------------- */
+
+/* Tablet (768-1023): the sidebar collapses to a 64px icon rail with tooltips.
+   The labels, badges and chrome hide (marker class + non-icon spans inside the
+   nav), the icons centre, and the tooltips are the `title` the rail mode
+   already carried — no JS, no state, the drawer mode below `md` is untouched. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  aside.glyph-sidebar {
+    width: 64px;
+  }
+  aside.glyph-sidebar .glyph-rail-hide {
+    display: none;
+  }
+  /* The chrome keeps its desktop padding classes; the rail needs them small. */
+  aside.glyph-sidebar > div {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+  aside.glyph-sidebar :is(a, button) {
+    justify-content: center;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+  aside.glyph-sidebar nav :is(a, button) > span:not(.material-symbols-outlined) {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  /* Tap targets: every control at least 44x44. Desktop keeps the dense
+     sizes the tables were designed around; spec's mobile section is where
+     the 44px rule is spelled out. */
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* The Toggle switch keeps its authored track (h-4 w-7 / h-5 w-9): the 44px
+     floor above forces the pill to 44x44, so on phones every switch renders
+     as a big circle with a lost thumb. Keep the compact geometry and restore
+     the 44px tap floor with an invisible hit-area ring instead — the switch
+     root is `relative`, so the pseudo anchors to the track. */
+  button[role='switch'] {
+    min-height: 0;
+    min-width: 0;
+  }
+  button[role='switch']::after {
+    content: '';
+    position: absolute;
+    inset: -14px;
+  }
+
+  /* The rail tooltips (glyph-rail-tip ::after) hang 200px+ outside the 240px
+     drawer rail and inflate its scrollWidth to 410px. On the touch drawer the
+     labels are always visible, so the hover tips are dead markup — drop them
+     instead of letting phantom width trip overflow checks. */
+  aside.glyph-sidebar .glyph-rail-tip::after {
+    display: none;
+  }
+
+  /* Table rows become vertical glass cards: label (mono, gray) on the left,
+     value on the right, the Actions column a row of 44px buttons below.
+     Each `td` carries `data-label`, so this one block converts every table
+     with the `.glyph-table` class — no per-cell markup duplication. */
+  table.glyph-table {
+    display: block;
+    min-width: 0;
+  }
+  table.glyph-table thead {
+    display: none;
+  }
+  table.glyph-table tbody {
+    display: block;
+  }
+  table.glyph-table tr {
+    display: block;
+    background: var(--9x-glass-strong);
+    border: 1px solid var(--9x-line);
+    border-radius: 12px;
+    padding: 8px 12px;
+    margin-bottom: 10px;
+      -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+
+  }
+  table.glyph-table :is(td, tbody th) {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    text-align: right;
+  }
+  /* These rules are un-layered, so they outrank the utilities: the columns
+     hidden for phones (`hidden md:table-cell`) need their `display: none`
+     restated or they would leak back in. */
+  table.glyph-table :is(td, tbody th).hidden {
+    display: none;
+  }
+  table.glyph-table :is(td, tbody th)[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    font-family: var(--font-code);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--app-text-muted);
+    opacity: 0.85;
+    text-align: left;
+    white-space: nowrap;
+  }
+  /* The actions column drops below the card body as a row of 44px buttons. */
+  table.glyph-table :is(td, tbody th)[data-label='Actions'] {
+    border-top: 1px solid var(--app-border);
+    margin-top: 8px;
+    padding-top: 10px;
+    justify-content: flex-start;
+  }
+  table.glyph-table :is(td, tbody th)[data-label='Actions']::before {
+    content: none;
+  }
+  /* PASS-2: the free-tier provider cell carries no data-label and holds the
+     provider name plus its notes. The generic flex row above squeezed the
+     name into a ~70px column, stacking "Google AI Studio" one word per line
+     beside its notes. As a block the name reads on top, the notes under it,
+     both full width. */
+  table.glyph-table td.free-provider-cell {
+    display: block;
+    text-align: left;
+  }
+
+  /* Shared modal becomes a bottom sheet: slides from the bottom, radius
+     20px on the top corners only. */
+  .glyph-modal-layer {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .glyph-modal {
+    width: 100vw;
+    max-width: 100vw;
+    max-height: 92vh;
+    border-radius: 20px 20px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    animation: glyph-sheet-up 250ms var(--9x-ease);
+  }
+  .glyph-modal-body {
+    max-height: calc(92vh - 150px);
+  }
+}
+
+/* Reduced motion: the sheet slides, the bars ease, the buttons lift — all of
+   it goes still when the operator asked for no motion. */
+@media (prefers-reduced-motion: reduce) {
+  .glyph-modal {
+    animation: none;
+  }
+  .x9-menu-panel {
+    animation: none;
+  }
+  .glyph-toast-progress {
+    animation: none;
+  }
+  input[type='checkbox']:checked,
+  input[type='radio']:checked {
+    animation: none;
+  }
+  .glyph-bar-fill,
+  .glyph-nav-item,
+  .glyph-nav-active {
+    transition: none;
+  }
+  button:is(.bg-brand-500, .bg-brand-600, .bg-primary, .bg-primary-hover, .bg-surface, .bg-surface-2, .bg-surface-3):hover:not(:disabled),
+  button:is(.bg-brand-500, .bg-brand-600, .bg-primary, .bg-primary-hover, .bg-surface, .bg-surface-2, .bg-surface-3):active:not(:disabled) {
+    transform: none;
+  }
+}

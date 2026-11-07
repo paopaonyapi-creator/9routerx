@@ -1,0 +1,99 @@
+# 9RouterX npm distribution (TASK-9routerX-updater-B §3).
+# Wraps the release binaries per-OS via optionalDependencies (the esbuild/turbo
+# pattern — no postinstall downloads). Publishes on tag push; NODE_AUTH_TOKEN
+# comes from the repo secret (user creates a granular npm token manually).
+name: npm-publish
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  platforms:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows, arch: amd64, ext: .exe, npm_os: win32, npm_arch: x64 }
+          - { os: linux, arch: amd64, ext: '', npm_os: linux, npm_arch: x64 }
+          - { os: linux, arch: arm64, ext: '', npm_os: linux, npm_arch: arm64 }
+          - { os: darwin, arch: amd64, ext: '', npm_os: darwin, npm_arch: x64 }
+          - { os: darwin, arch: arm64, ext: '', npm_os: darwin, npm_arch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org/
+      - name: Download release binary for this platform
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          gh release download "${GITHUB_REF_NAME}" --pattern "9routerx-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}*" --clobber
+          ls -la
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Assemble platform package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PKGDIR="pkg/@9routerx/${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
+          mkdir -p "${PKGDIR}/bin"
+          BIN="9routerx${{ matrix.ext }}"
+          [ "${{ matrix.ext }}" != ".exe" ] && chmod +x "9routerx-${{ matrix.os }}-${{ matrix.arch }}" && cp "9routerx-${{ matrix.os }}-${{ matrix.arch }}" "${PKGDIR}/bin/${BIN}" || cp "9routerx-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" "${PKGDIR}/bin/${BIN}"
+          node -e "
+            const p = { name: '@9routerx/${{ matrix.npm_os }}-${{ matrix.npm_arch }}', version: process.env.VERSION, description: '9RouterX binary (${{ matrix.os }}/${{ matrix.arch }})', os: ['${{ matrix.npm_os }}'], cpu: ['${{ matrix.npm_arch }}'], license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', files: ['bin'], publishConfig: { access: 'public' } };
+            require('fs').writeFileSync('${PKGDIR}/package.json', JSON.stringify(p, null, 2));
+          "
+        env:
+          VERSION: ${{ github.ref_name }}
+      - name: Publish platform package
+        if: ${{ secrets.NODE_AUTH_TOKEN != '' }}
+        run: |
+          cd "pkg/@9routerx/${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
+          npm publish --dry-run
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+
+  wrapper:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: platforms
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org/
+      - name: Assemble + publish main wrapper package
+        if: ${{ secrets.NODE_AUTH_TOKEN != '' }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p pkg/9routerx/bin
+          node -e "
+            const p = { name: '9routerx', version: process.env.VERSION, description: '9RouterX — 9R Next Go Generation: local AI gateway (installs the right platform binary)', bin: { 9routerx: 'bin/launcher.js' }, optionalDependencies: { '@9routerx/win32-x64': process.env.VERSION, '@9routerx/linux-x64': process.env.VERSION, '@9routerx/linux-arm64': VERSION, '@9routerx/darwin-x64': VERSION, '@9routerx/darwin-arm64': VERSION }, license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', keywords: ['ai','gateway','router','llm','proxy'], engines: { node: '>=18' }, publishConfig: { access: 'public' } };
+            require('fs').writeFileSync('pkg/9routerx/package.json', JSON.stringify(p, null, 2));
+            const fs = require('fs');
+            fs.writeFileSync('pkg/9routerx/bin/launcher.js', [
+              '#!/usr/bin/env node',
+              \"const { platform, arch } = process;\",
+              \"const map = { win32: { x64: 'win32-x64', arm64: 'win32-arm64' }, linux: { x64: 'linux-x64', arm64: 'linux-arm64' }, darwin: { x64: 'darwin-x64', arm64: 'darwin-arm64' } };\",
+              \"const t = (map[platform] || {})[arch];\",
+              \"if (!t) { console.error('9RouterX: unsupported platform ' + platform + '/' + arch); process.exit(1); }\",
+              \"const ext = platform === 'win32' ? '.exe' : '';\",
+              \"const { spawnSync } = require('child_process');\",
+              \"const r = spawnSync(require.resolve('@9routerx/' + t + '/bin/9routerx' + ext), process.argv.slice(2), { stdio: 'inherit' });\",
+              \"process.exit(r.status || 0);\",
+              ''
+            ].join('\n'));
+          "
+          cd pkg/9routerx
+          npm publish --dry-run
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}

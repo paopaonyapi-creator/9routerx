@@ -1,0 +1,693 @@
+// 9RouterX — this file is part of a port maintained by https://github.com/yanstd888/ — https://t.me/aiclub_id
+package chat
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+
+	json "encoding/json/v2"
+
+	"github.com/google/uuid"
+	"golang.org/x/sync/singleflight"
+
+	"9routerx/proxy/internal/handlers/shared"
+	"9routerx/proxy/internal/log"
+	"9routerx/proxy/internal/models"
+	"9routerx/proxy/internal/providers"
+	internalproxy "9routerx/proxy/internal/proxy"
+)
+
+// Live model discovery for /v1/models, ported from the upstream
+// LIVE_MODEL_RESOLVERS in src/app/api/v1/models/route.js.
+//
+// Upstream prefers a provider's live catalog over the static registry when a
+// connection exists and no explicit enabledModels are configured, which is why
+// `kiro` publishes `auto`/`minimax-m2.1` variants that are not in the registry
+// and `grok-cli` publishes only the model its account may use.
+
+const (
+	liveCatalogTTL       = 5 * time.Minute
+	liveCatalogNegTTL    = 60 * time.Second
+	liveCatalogFastHTTP  = 10 * time.Second
+	kiroCatalogHTTP      = 30 * time.Second
+	kiroRuntimeSDKVer    = "1.0.0"
+	kiroAgentOS          = "windows"
+	kiroAgentOSVersion   = "10.0.26200"
+	kiroNodeVersion      = "22.21.1"
+	kiroIDEVersion       = "0.10.32"
+	kiroDefaultRegion    = "us-east-1"
+	kiroDefaultContext   = 200_000
+	grokCLIBaseURL       = "https://cli-chat-proxy.grok.com/v1"
+	grokCLIVersion       = providers.GrokCLIVersion
+	grokCLIUserAgent     = providers.GrokCLIUserAgent
+	grokCLIIdentifier    = providers.GrokCLIClientIdentifier
+	grokCLIDefaultModel  = "grok-build"
+	grokCLIDefaultCtxLen = 500_000
+	grokCLIDefaultMaxOut = 64_000
+)
+
+// Endpoints are variables so tests can point the resolvers at a local server.
+var (
+	kiroCatalogBaseURL = "https://q.%s.amazonaws.com"
+	grokCLICatalogURL  = grokCLIBaseURL + "/models"
+)
+
+// LiveCapabilities is the capability block a live resolver can publish
+// alongside a model. Kiro does (upstream buildVariants emits
+// {thinking, agentic} per synthetic variant); grok-cli does not.
+type LiveCapabilities struct {
+	Thinking bool `json:"thinking"`
+	Agentic  bool `json:"agentic"`
+
+	// A catalogue may also state the model's real windows and effort levels.
+	// Carrying them here lets the listing publish the provider's own numbers,
+	// so no client has to hard-code an override for a model the provider
+	// already describes.
+	Vision             bool     `json:"vision,omitempty"`
+	ContextWindow      int      `json:"contextWindow,omitempty"`
+	MaxOutput          int      `json:"maxOutput,omitempty"`
+	ThinkingLevels     []string `json:"thinkingLevels,omitempty"`
+	ThinkingDefault    string   `json:"thinkingDefault,omitempty"`
+	ThinkingCanDisable bool     `json:"thinkingCanDisable,omitempty"`
+}
+
+// LiveModel is one entry of a provider's live catalog.
+type LiveModel struct {
+	ID            string
+	Name          string
+	ContextLength int
+	MaxOutput     int
+	Capabilities  *LiveCapabilities
+	// LimitsAuthoritative marks a catalogue whose ContextLength/MaxOutput are
+	// the provider's own numbers for this exact model, not a best guess. They
+	// then outrank the static substring table, which only knows model families
+	// and would otherwise report a neighbouring model's window.
+	LimitsAuthoritative bool
+}
+
+type liveCatalogEntry struct {
+	expiresAt time.Time
+	models    []LiveModel
+}
+
+var liveCatalogStore = struct {
+	mu      sync.RWMutex
+	entries map[string]liveCatalogEntry
+}{entries: make(map[string]liveCatalogEntry)}
+
+// liveCatalogFlight collapses concurrent discoveries for the same credential
+// into one upstream call. Without it, N clients hitting /v1/models while the
+// cache is cold would each fan out to the provider API (kiro, grok-cli, custom
+// node) before the first result populates the cache.
+var liveCatalogFlight singleflight.Group
+
+// pinnedEnabledModels reports whether the operator pinned a model list on the
+// connection. Such a connection already publishes exactly that list, so a live
+// catalog cannot add anything — and fetching it once per combo leaf is what made
+// /v1/models take minutes at thousands of connections.
+func pinnedEnabledModels(cd *shared.ConnectionData) bool {
+	if cd == nil || cd.ProviderSpecificData == nil {
+		return false
+	}
+	switch v := cd.ProviderSpecificData["enabledModels"].(type) {
+	case []any:
+		return len(v) > 0
+	case []string:
+		return len(v) > 0
+	}
+	return false
+}
+
+// resolveLiveCatalog returns the live catalog for a provider connection, or nil
+// when the provider has no live resolver or discovery failed. Callers fall back
+// to the static registry, exactly like upstream's `live?.models?.length` guard.
+func (h *ChatHandler) resolveLiveCatalog(ctx context.Context, conn *models.ProviderConnection, connData *shared.ConnectionData, providerID string) []LiveModel {
+	if conn == nil || connData == nil {
+		return nil
+	}
+	if pinnedEnabledModels(connData) {
+		return nil
+	}
+	accessToken := connData.AccessToken
+	if accessToken == "" {
+		accessToken = connData.APIKey
+	}
+	if accessToken == "" {
+		return nil
+	}
+
+	var fetch func(context.Context, string) []LiveModel
+	switch {
+	case providerID == "kiro":
+		fetch = func(ctx context.Context, token string) []LiveModel {
+			return h.fetchKiroLiveCatalog(ctx, conn, connData, token)
+		}
+	case providerID == "grok-cli":
+		fetch = func(ctx context.Context, token string) []LiveModel {
+			return h.fetchGrokCLILiveCatalog(ctx, conn, connData, token)
+		}
+	case providerID == "zed":
+		fetch = func(ctx context.Context, token string) []LiveModel {
+			return h.fetchZedLiveCatalog(ctx, conn, connData, token)
+		}
+	case isCompatibleProviderID(providerID):
+		// Upstream fetchCompatibleModelIds: custom nodes publish whatever their
+		// own /models endpoint reports.
+		fetch = func(ctx context.Context, _ string) []LiveModel {
+			return h.fetchCompatibleNodeModels(ctx, conn, connData, providerID)
+		}
+	default:
+		return nil
+	}
+
+	cacheKey := liveCatalogKey(providerID, conn, connData)
+	if cached, ok := liveCatalogCached(cacheKey); ok {
+		return cached
+	}
+
+	// One upstream call per credential even when many requests race a cold
+	// cache: the losers wait for the winner's result instead of each fanning
+	// out to the provider API.
+	result, err, _ := liveCatalogFlight.Do(cacheKey, func() (any, error) {
+		if cached, ok := liveCatalogCached(cacheKey); ok {
+			return cached, nil
+		}
+		// The flight is shared across callers, so the work inside it must not
+		// inherit the leader's cancellation: one client disconnecting would
+		// otherwise cancel the fetch for every waiter, and an empty result
+		// caches nothing, so the next dashboard poll repeats the whole call.
+		// Detaching leaves each fetch's own liveCatalogFastHTTP timeout as the
+		// only bound on the request.
+		flightCtx := context.WithoutCancel(ctx)
+		discovered := fetch(flightCtx, accessToken)
+		if len(discovered) == 0 && liveCatalogRefreshToken(conn) != "" {
+			// Upstream refreshes the credential on 401/403 and retries once.
+			if refreshed, _, rErr := h.forceRefreshOAuthToken(conn.ID); rErr == nil && refreshed != "" {
+				discovered = fetch(flightCtx, refreshed)
+			} else if rErr != nil {
+				log.Warn("models", "live catalog token refresh failed", "provider", providerID, "conn", conn.ID, "error", rErr)
+			}
+		}
+		if len(discovered) == 0 {
+			// Negative cache: a provider whose catalog endpoint times out used to be
+			// re-fetched by every combo leaf (liveCapabilityLeaf) because nothing was
+			// stored for a failure. At thousands of connections that turned
+			// /v1/models into minutes of sequential 10s timeouts.
+			liveCatalogStoreNegative(cacheKey)
+			return nil, nil
+		}
+		liveCatalogStoreModels(cacheKey, discovered)
+		return discovered, nil
+	})
+	if err != nil || result == nil {
+		return nil
+	}
+	discovered, _ := result.([]LiveModel)
+	return discovered
+}
+
+func liveCatalogKey(providerID string, conn *models.ProviderConnection, connData *shared.ConnectionData) string {
+	seed := providerID
+	if psd := connData.ProviderSpecificData; psd != nil {
+		if s, _ := psd["profileArn"].(string); s != "" {
+			seed += "|" + s
+		} else if s, _ := psd["clientId"].(string); s != "" {
+			seed += "|" + s
+		}
+	}
+	if seed == providerID {
+		seed += "|" + conn.ID + "|" + liveCatalogRefreshToken(conn) + "|" + connData.AccessToken + "|" + connData.APIKey
+	}
+	return seed
+}
+
+// liveCatalogRefreshToken reads the OAuth refresh token straight from the
+// connection blob — ConnectionData only carries the access token.
+func liveCatalogRefreshToken(conn *models.ProviderConnection) string {
+	if conn == nil || conn.Data == "" {
+		return ""
+	}
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(conn.Data), &raw); err != nil {
+		return ""
+	}
+	value, _ := raw["refreshToken"].(string)
+	return value
+}
+
+func liveCatalogCached(key string) ([]LiveModel, bool) {
+	liveCatalogStore.mu.RLock()
+	defer liveCatalogStore.mu.RUnlock()
+	entry, ok := liveCatalogStore.entries[key]
+	if !ok || time.Now().After(entry.expiresAt) {
+		return nil, false
+	}
+	return entry.models, true
+}
+
+func liveCatalogStoreModels(key string, discovered []LiveModel) {
+	liveCatalogStore.mu.Lock()
+	defer liveCatalogStore.mu.Unlock()
+	liveCatalogStore.entries[key] = liveCatalogEntry{expiresAt: time.Now().Add(liveCatalogTTL), models: discovered}
+}
+
+func liveCatalogStoreNegative(key string) {
+	liveCatalogStore.mu.Lock()
+	defer liveCatalogStore.mu.Unlock()
+	liveCatalogStore.entries[key] = liveCatalogEntry{expiresAt: time.Now().Add(liveCatalogNegTTL)}
+}
+
+// ---- Kiro (AWS CodeWhisperer ListAvailableModels) ----
+
+// kiroFingerprintHeaders mirrors upstream buildKiroFingerprintHeaders: the
+// upstream rejects requests whose User-Agent does not look like Kiro IDE.
+func kiroFingerprintHeaders(seed, accessToken string) map[string]string {
+	sum := sha256.Sum256([]byte(seed))
+	machineID := hex.EncodeToString(sum[:])
+	userAgent := fmt.Sprintf(
+		"aws-sdk-js/%s ua/2.1 os/%s#%s lang/js md/nodejs#%s api/codewhispererruntime#%s m/N,E KiroIDE-%s-%s",
+		kiroRuntimeSDKVer, kiroAgentOS, kiroAgentOSVersion, kiroNodeVersion, kiroRuntimeSDKVer, kiroIDEVersion, machineID,
+	)
+	return map[string]string{
+		"User-Agent":                  userAgent,
+		"x-amz-user-agent":            fmt.Sprintf("aws-sdk-js/%s KiroIDE-%s-%s", kiroRuntimeSDKVer, kiroIDEVersion, machineID),
+		"x-amzn-kiro-agent-mode":      "vibe",
+		"x-amzn-codewhisperer-optout": "true",
+		"amz-sdk-request":             "attempt=1; max=1",
+		"amz-sdk-invocation-id":       uuid.NewString(),
+		"Accept":                      "application/json",
+		"Authorization":               "Bearer " + accessToken,
+	}
+}
+
+func kiroRegion(profileArn string) string {
+	parts := strings.Split(profileArn, ":")
+	if len(parts) >= 4 && parts[3] != "" {
+		return parts[3]
+	}
+	return kiroDefaultRegion
+}
+
+type kiroRawModel struct {
+	ModelID        string  `json:"modelId"`
+	ModelName      string  `json:"modelName"`
+	RateMultiplier float64 `json:"rateMultiplier"`
+	Description    string  `json:"description"`
+	TokenLimits    struct {
+		MaxInputTokens int `json:"maxInputTokens"`
+	} `json:"tokenLimits"`
+}
+
+func (h *ChatHandler) fetchKiroLiveCatalog(ctx context.Context, conn *models.ProviderConnection, connData *shared.ConnectionData, accessToken string) []LiveModel {
+	profileArn, _ := connData.ProviderSpecificData["profileArn"].(string)
+	seed, _ := connData.ProviderSpecificData["clientId"].(string)
+	if seed == "" {
+		seed = liveCatalogRefreshToken(conn)
+	}
+	if seed == "" {
+		seed = profileArn
+	}
+	if seed == "" {
+		seed = accessToken
+	}
+	if seed == "" {
+		seed = "kiro-anonymous"
+	}
+
+	query := url.Values{"origin": []string{"AI_EDITOR"}}
+	if profileArn != "" {
+		query.Set("profileArn", profileArn)
+	}
+	endpoint := fmt.Sprintf(kiroCatalogBaseURL, kiroRegion(profileArn)) + "/ListAvailableModels?" + query.Encode()
+
+	reqCtx, cancel := context.WithTimeout(ctx, kiroCatalogHTTP)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		log.Warn("models", "kiro catalog request failed", "conn", conn.ID, "error", err)
+		return nil
+	}
+	for key, value := range kiroFingerprintHeaders(seed, accessToken) {
+		req.Header.Set(key, value)
+	}
+
+	resp, err := h.Client.Do(req)
+	if err != nil {
+		log.Warn("models", "kiro catalog fetch failed", "conn", conn.ID, "error", err)
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Warn("models", "kiro catalog rejected", "conn", conn.ID, "status", resp.StatusCode)
+		return nil
+	}
+
+	var payload struct {
+		Models []kiroRawModel `json:"models"`
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil || json.Unmarshal(body, &payload) != nil {
+		log.Warn("models", "kiro catalog parse failed", "conn", conn.ID, "error", err)
+		return nil
+	}
+
+	var out []LiveModel
+	for _, raw := range payload.Models {
+		upstreamID := raw.ModelID
+		if upstreamID == "" {
+			continue
+		}
+		display := kiroDisplayName(raw.ModelName, upstreamID, raw.RateMultiplier)
+		ctxLen := raw.TokenLimits.MaxInputTokens
+		if ctxLen <= 0 {
+			ctxLen = kiroDefaultContext
+		}
+		out = append(out, expandKiroVariants(upstreamID, display, ctxLen)...)
+	}
+	return out
+}
+
+func kiroDisplayName(modelName, modelID string, rateMultiplier float64) string {
+	base := strings.TrimSpace(modelName)
+	if base == "" {
+		base = strings.TrimSpace(modelID)
+	}
+	if base == "" {
+		base = "Kiro"
+	}
+	if rateMultiplier <= 0 || rateMultiplier == 1 {
+		return "Kiro " + base
+	}
+	return fmt.Sprintf("Kiro %s (%.1fx credit)", base, rateMultiplier)
+}
+
+// expandKiroVariants builds the synthetic variant set upstream exposes: the
+// base model, -thinking, and (except for `auto`) -agentic / -thinking-agentic.
+// The suffixes do not exist upstream; the Kiro translator strips them.
+func expandKiroVariants(upstreamID, display string, ctxLen int) []LiveModel {
+	base := strings.TrimSuffix(upstreamID, "-agentic")
+	base = strings.TrimSuffix(base, "-thinking")
+	variants := []LiveModel{
+		{ID: base, Name: display, ContextLength: ctxLen, Capabilities: &LiveCapabilities{}},
+		{ID: base + "-thinking", Name: display + " (Thinking)", ContextLength: ctxLen, Capabilities: &LiveCapabilities{Thinking: true}},
+	}
+	if base != "auto" {
+		variants = append(variants,
+			LiveModel{ID: base + "-agentic", Name: display + " (Agentic)", ContextLength: ctxLen, Capabilities: &LiveCapabilities{Agentic: true}},
+			LiveModel{ID: base + "-thinking-agentic", Name: display + " (Thinking + Agentic)", ContextLength: ctxLen, Capabilities: &LiveCapabilities{Thinking: true, Agentic: true}},
+		)
+	}
+	return variants
+}
+
+// ---- Grok CLI ----
+
+func grokCLIHeaders(accessToken string, psd map[string]any) map[string]string {
+	headers := map[string]string{
+		"Authorization":            "Bearer " + accessToken,
+		"Accept":                   "application/json",
+		"User-Agent":               grokCLIUserAgent,
+		"x-xai-token-auth":         "xai-grok-cli",
+		"x-grok-client-version":    grokCLIVersion,
+		"x-grok-client-identifier": grokCLIIdentifier,
+		"x-grok-client-mode":       "headless",
+	}
+	if psd != nil {
+		if email, _ := psd["email"].(string); email != "" {
+			headers["x-email"] = email
+		}
+		userID, _ := psd["userId"].(string)
+		if userID == "" {
+			userID, _ = psd["principalId"].(string)
+		}
+		if userID != "" {
+			headers["x-userid"] = userID
+		}
+	}
+	return headers
+}
+
+func (h *ChatHandler) fetchGrokCLILiveCatalog(ctx context.Context, conn *models.ProviderConnection, connData *shared.ConnectionData, accessToken string) []LiveModel {
+	reqCtx, cancel := context.WithTimeout(ctx, liveCatalogFastHTTP)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, grokCLICatalogURL, nil)
+	if err != nil {
+		return nil
+	}
+	for key, value := range grokCLIHeaders(accessToken, connData.ProviderSpecificData) {
+		req.Header.Set(key, value)
+	}
+
+	resp, err := h.Client.Do(req)
+	if err != nil {
+		log.Warn("models", "grok-cli catalog fetch failed", "conn", conn.ID, "error", err)
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Warn("models", "grok-cli catalog rejected", "conn", conn.ID, "status", resp.StatusCode)
+		return nil
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil
+	}
+	return parseGrokCLILiveModels(body)
+}
+
+// ---- OpenAI/Anthropic-compatible nodes ----
+
+// fetchCompatibleNodeModels ports upstream fetchCompatibleModelIds: a custom
+// node without configured models is asked directly (`GET <baseUrl>/models`),
+// which is how a node can publish models its custom-model rows do not cover.
+func (h *ChatHandler) fetchCompatibleNodeModels(ctx context.Context, conn *models.ProviderConnection, connData *shared.ConnectionData, providerID string) []LiveModel {
+	apiKey := connData.APIKey
+	if apiKey == "" {
+		apiKey = connData.AccessToken
+	}
+	baseURL, _ := connData.ProviderSpecificData["baseUrl"].(string)
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if apiKey == "" || baseURL == "" {
+		return nil
+	}
+
+	headers := map[string]string{"Content-Type": "application/json"}
+	switch {
+	case strings.HasPrefix(providerID, "openai-compatible-"):
+		headers["Authorization"] = "Bearer " + apiKey
+		baseURL = openAICompatibleModelsURL(providerID, baseURL, connectionAPIType(connData))
+	case strings.HasPrefix(providerID, "anthropic-compatible-"):
+		baseURL = strings.TrimSuffix(baseURL, "/messages/models")
+		if !strings.HasSuffix(baseURL, "/messages") {
+			baseURL += "/models"
+		} else {
+			baseURL = strings.TrimSuffix(baseURL, "/messages") + "/models"
+		}
+		headers["x-api-key"] = apiKey
+		headers["anthropic-version"] = "2023-06-01"
+		headers["Authorization"] = "Bearer " + apiKey
+	default:
+		return nil
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, liveCatalogFastHTTP)
+	defer cancel()
+	// The dispatch path judges the same endpoint through AssertDispatchURLAllowed
+	// and, when the operator's allowPrivateProviderURLs opt-in cleared it, marks
+	// the context so the socket dialer admits the loopback dial that judgment
+	// promised (dispatch_guard.go:WithAllowLoopback). The catalog fetch dials the
+	// same URL for the same node, so it owes the same judgment: without the
+	// marker an operator running a local Ollama/LM Studio — dispatch working,
+	// ALLOW_PRIVATE_PROVIDER_URLS=true — saw the models lane answer
+	// "blocked by SSRF protection" against the very endpoint dispatch was
+	// already allowed to call, and /v1/models published nothing for the node.
+	// The judgment is the same one dispatch makes: metadata endpoints stay
+	// refused, and a non-loopback private target still needs
+	// ALLOW_PRIVATE_NETWORKING at the dialer.
+	if err := internalproxy.AssertDispatchURLAllowed(baseURL, internalproxy.AllowPrivateProviderURLs()); err == nil {
+		reqCtx = internalproxy.WithAllowLoopback(reqCtx)
+	}
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, baseURL, nil)
+	if err != nil {
+		return nil
+	}
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	resp, err := h.Client.Do(req)
+	if err != nil {
+		log.Warn("models", "compatible node catalog fetch failed", "conn", conn.ID, "error", err)
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil
+	}
+	return parseOpenAIStyleModelIDs(body)
+}
+
+// openAICompatibleModelsURL completes a compatible node's baseUrl into its
+// models endpoint, the same completion the chat lane gets from
+// compatibleNodeLaneURL: the node's baseUrl is a PREFIX by contract, not a
+// full endpoint. Fetching the bare base answered the node's root page (or 404)
+// instead of its model list — an OpenAI-style server publishes models at
+// <api-root>/models, and the api-root is exactly what compatibleNodeLaneURL
+// computes for the chat lane — so the live catalog never loaded and
+// /v1/models published nothing for the node while chat completions to it
+// worked. A base that already names /models is left alone.
+func openAICompatibleModelsURL(providerID, baseURL, apiType string) string {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if base == "" {
+		return base
+	}
+	if strings.HasSuffix(base, "/models") {
+		return base
+	}
+	lane := compatibleNodeLaneURL(providerID, apiType, base)
+	for _, chatLane := range []string{"/chat/completions", "/responses"} {
+		if strings.HasSuffix(lane, chatLane) {
+			return strings.TrimSuffix(lane, chatLane) + "/models"
+		}
+	}
+	return base + "/models"
+}
+
+// parseOpenAIStyleModelIDs reads the `data`/`models` array every OpenAI-style
+// upstream returns, keeping the first occurrence of each id.
+func parseOpenAIStyleModelIDs(body []byte) []LiveModel {
+	var payload struct {
+		Data   []map[string]any `json:"data"`
+		Models []map[string]any `json:"models"`
+	}
+	if json.Unmarshal(body, &payload) != nil {
+		return nil
+	}
+	entries := payload.Data
+	if len(entries) == 0 {
+		entries = payload.Models
+	}
+
+	seen := make(map[string]bool, len(entries))
+	out := make([]LiveModel, 0, len(entries))
+	for _, entry := range entries {
+		id := firstNonEmptyString(entry, "id", "name", "model")
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, LiveModel{ID: id})
+	}
+	return out
+}
+
+// parseGrokCLILiveModels mirrors upstream parseGrokCliModels: the catalog may
+// arrive as an array, {data|models|results: [...]}, or an id → entry object.
+func parseGrokCLILiveModels(body []byte) []LiveModel {
+	var payload any
+	if json.Unmarshal(body, &payload) != nil {
+		return nil
+	}
+
+	var entries []any
+	var keyedEntry string
+	switch value := payload.(type) {
+	case []any:
+		entries = value
+	case map[string]any:
+		for _, key := range []string{"data", "models", "results"} {
+			if nested, ok := value[key]; ok {
+				switch typed := nested.(type) {
+				case []any:
+					entries = typed
+				case map[string]any:
+					entries, keyedEntry = objectEntries(typed)
+				}
+				break
+			}
+		}
+		if entries == nil {
+			entries, keyedEntry = objectEntries(value)
+		}
+	}
+
+	seen := make(map[string]bool, len(entries))
+	var out []LiveModel
+	for _, raw := range entries {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := firstNonEmptyString(item, "id", "model_id", "modelId", "model", "slug")
+		if id == "" {
+			id = firstNonEmptyString(item, "name")
+		}
+		if id == "" {
+			id = keyedEntry
+		}
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+
+		model := LiveModel{ID: id}
+		model.ContextLength = firstPositiveInt(item, "context_length", "contextLength", "context_window", "contextWindow")
+		model.MaxOutput = firstPositiveInt(item, "max_output_tokens", "maxOutputTokens")
+		if id == grokCLIDefaultModel {
+			if model.ContextLength == 0 {
+				model.ContextLength = grokCLIDefaultCtxLen
+			}
+			if model.MaxOutput == 0 {
+				model.MaxOutput = grokCLIDefaultMaxOut
+			}
+		}
+		out = append(out, model)
+	}
+	return out
+}
+
+func objectEntries(value map[string]any) ([]any, string) {
+	entries := make([]any, 0, len(value))
+	onlyKey := ""
+	for key, item := range value {
+		entries = append(entries, item)
+		onlyKey = key
+	}
+	return entries, onlyKey
+}
+
+func firstNonEmptyString(item map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := item[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func firstPositiveInt(item map[string]any, keys ...string) int {
+	for _, key := range keys {
+		switch value := item[key].(type) {
+		case float64:
+			if value > 0 {
+				return int(value)
+			}
+		case int:
+			if value > 0 {
+				return value
+			}
+		}
+	}
+	return 0
+}

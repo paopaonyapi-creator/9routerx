@@ -1,0 +1,726 @@
+// 9RouterX — all source code port and modification by https://github.com/yanstd888/ — https://t.me/aiclub_id
+package chat
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+
+	"9routerx/proxy/internal/constants"
+	json "9routerx/proxy/internal/fastjson"
+	"9routerx/proxy/internal/guardrails"
+	"9routerx/proxy/internal/handlerutil"
+	"9routerx/proxy/internal/log"
+	"9routerx/proxy/internal/providers"
+	internalproxy "9routerx/proxy/internal/proxy"
+	"9routerx/proxy/internal/proxy/executor"
+	"9routerx/proxy/internal/semanticcache"
+	"9routerx/proxy/internal/shutdown"
+	"9routerx/proxy/internal/translator"
+)
+
+// forwardRequest sends the request to the upstream provider and streams/pipes the response.
+// upstreamClaude marks an upstream that answers in Claude Messages format (an
+// anthropic-compatible node, minimax-code); clientClaude marks a client whose
+// own wire is Claude Messages. Three combinations matter:
+//   - upstream Claude + client not Claude: the reply is translated to the
+//     client's Chat Completions shape (the executor's UpstreamClaude, for the
+//     providers without a custom executor).
+//   - upstream Claude + client Claude: frames are already the client's format
+//     and are relayed untouched.
+//   - neither: the historical OpenAI lanes, translateResponse as passed.
+func (h *ChatHandler) forwardRequest(
+	ctx context.Context,
+	w http.ResponseWriter,
+	cfg *providers.ProviderConfig,
+	apiKey string,
+	body []byte,
+	isStream bool,
+	translateResponse bool,
+	metrics *streamMetrics,
+	// httpClient is the connection's client, proxy pool included. It is a
+	// parameter because falling back to h.Client here would dial the provider
+	// directly for every provider without a custom executor — the assigned
+	// pool would look bound in the dashboard and never be used.
+	httpClient *http.Client,
+	provider string,
+	upstreamClaude bool,
+	clientClaude bool,
+) error {
+	// A nil client means the caller had no connection context; the shared one
+	// is the only sensible default.
+	if httpClient == nil {
+		httpClient = h.Client
+	}
+	// OpenAI-compat Gemini endpoints validate tool schemas as strictly as the
+	// native one — sanitize tools so no unsupported JSON-Schema keyword reaches
+	// them ("Invalid tool parameters" fix).
+	if cfg.IsGeminiOpenAICompat() {
+		if sanitized, serr := translator.SanitizeOpenAITools(body); serr == nil && sanitized != nil {
+			body = sanitized
+		}
+	}
+	// Strict pattern validation: strip regex lookarounds and malformed patterns
+	// that OpenAI, DeepSeek, and strict JSON Schema validators reject with HTTP 400.
+	var bodyMap map[string]any
+	if err := json.Unmarshal(body, &bodyMap); err == nil {
+		if tools, ok := bodyMap["tools"].([]any); ok && len(tools) > 0 {
+			if normalized, removed := translator.NormalizeToolSchemasForProvider(provider, tools); removed > 0 {
+				bodyMap["tools"] = normalized
+				log.Debug("tool_schema", "stripped invalid patterns", "provider", provider, "removed", removed)
+				if newBody, err := json.Marshal(bodyMap); err == nil {
+					body = newBody
+				}
+			}
+		}
+	}
+	// Nous Portal thinking dialect and attribution tags (upstream NOUS_ATTRIBUTION / PR #4770 / thinkingUnified)
+	body = providers.ApplyNousThinking(body, provider)
+	if apiKey != "" && providers.ShouldApplyNousAttribution(cfg.BaseURL) {
+		body = providers.ApplyNousAttribution(body)
+	}
+	if provider == "deepseek" {
+		body = executor.DowngradeJsonSchemaToJSONObject(body)
+	}
+	// Provider-level admission control. The breaker answers "is this provider
+	// healthy at all?" and the semaphore "may THIS account take another
+	// concurrent request?" — one dead provider must stop every account's
+	// traffic to it, and one busy account must not throttle the others. Both
+	// are consulted here, at the single point every OpenAI-compatible lane
+	// goes through, so no lane can quietly bypass them.
+	release, allowed := h.resilienceAdmit(ctx, provider, cfg)
+	if !allowed {
+		return &upstreamError{
+			StatusCode: http.StatusServiceUnavailable,
+			Body:       []byte(`{"error":{"message":"provider temporarily unavailable","type":"server_error"}}`),
+		}
+	}
+	resp, err := internalproxy.ForwardOpenAI(ctx, httpClient, cfg, apiKey, body, isStream)
+	if err != nil {
+		// A transport failure never produced a status, which counts for the
+		// breaker exactly as a 503 does: the provider did not answer.
+		release()
+		h.resilienceReport(provider, cfg, 0)
+		return fmt.Errorf("forward to upstream: %w", err)
+	}
+	// The status is the provider's verdict, so report it before the error is
+	// translated — only provider-level failures may charge the breaker, and a
+	// 401 or 429 says something about the account rather than the provider.
+	h.resilienceReport(provider, cfg, resp.StatusCode)
+	release()
+
+	var bodyCloser io.Closer = resp.Body
+	defer func() {
+		if bodyCloser != nil {
+			bodyCloser.Close()
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, constants.UpstreamErrLimit))
+		if err != nil {
+			return fmt.Errorf("read upstream error body: %w", err)
+		}
+		return &upstreamError{StatusCode: resp.StatusCode, Body: respBody, Header: resp.Header}
+	}
+
+	start := time.Now()
+	if metrics == nil {
+		metrics = &streamMetrics{}
+	}
+	if isStream {
+		contentType := resp.Header.Get("Content-Type")
+		if !strings.HasPrefix(strings.ToLower(contentType), "text/event-stream") {
+			// Upstream returned non-streaming response (e.g. JSON error with 200 OK)
+			log.Warn("stream", "non-stream response", "contentType", contentType)
+			if upstreamClaude && !clientClaude {
+				return h.handleClaudeUpstreamJSON(ctx, w, resp.Body, metrics)
+			}
+			return h.handleJSONResponse(ctx, w, resp.Body, translateResponse, metrics)
+		}
+		// Wrap with SSE stall detection
+		stallReader := internalproxy.NewStallReaderWithContext(ctx, resp.Body, cfg.ResolveStallTimeout(internalproxy.ResolveDefaultStallTimeout()), "upstream")
+		bodyCloser = stallReader
+		if upstreamClaude && clientClaude {
+			// Claude client on a Claude upstream: the frames are already the
+			// client's format, so the passthrough lane relays them untouched.
+			return h.handleStreamResponse(ctx, w, stallReader, false, start, metrics)
+		}
+		if upstreamClaude {
+			// OpenAI client on a Messages upstream: translate every Claude
+			// event to an OpenAI chunk instead of relaying SSE the client
+			// cannot read.
+			return h.handleClaudeUpstreamStream(ctx, w, stallReader, start, metrics)
+		}
+		return h.handleStreamResponse(ctx, w, stallReader, translateResponse, start, metrics)
+	}
+	if upstreamClaude && !clientClaude {
+		return h.handleClaudeUpstreamJSON(ctx, w, resp.Body, metrics)
+	}
+	return h.handleJSONResponse(ctx, w, resp.Body, translateResponse, metrics)
+}
+
+// handleClaudeUpstreamJSON serves a non-streaming Claude Messages response to a
+// Chat Completions client. Translation only runs on a body that really is a
+// Claude Message; anything else (a gateway's error envelope, an OpenAI-shaped
+// reply) is relayed raw so the client — and the probe verdict — reads the
+// failure the upstream actually sent rather than an empty completion.
+func (h *ChatHandler) handleClaudeUpstreamJSON(ctx context.Context, w http.ResponseWriter, upstream io.Reader, metrics *streamMetrics) error {
+	body, err := io.ReadAll(io.LimitReader(upstream, constants.MaxUpstreamBodyBytes))
+	if err != nil {
+		return fmt.Errorf("read upstream response body: %w", err)
+	}
+	if internalproxy.LooksLikeSSE(body) {
+		// A Messages upstream answered stream:false with an event stream. Fold
+		// it into one chat.completion: translate each event to an OpenAI chunk,
+		// then aggregate the chunks the same way a forced-SSE OpenAI reply is.
+		var folded bytes.Buffer
+		state := &translator.ClaudeToOpenAIStreamState{Model: translator.RequestedModelFromContext(ctx)}
+		_ = internalproxy.ScanStream(bytes.NewReader(body), func(payload []byte) {
+			if out, terr := translator.TranslateClaudeChunkToOpenAI(payload, state); terr == nil {
+				folded.Write(out)
+			}
+		})
+		if aggregated, ok := sseToClaudeJSON(folded.Bytes()); ok {
+			body = aggregated
+		}
+	}
+	converted := body
+	if translator.IsClaudeMessageBody(body) {
+		if next, terr := translator.TranslateClaudeResponseToOpenAI(body); terr == nil {
+			converted = next
+		} else {
+			log.Warn("json", "claude response relayed untranslated", "error", terr)
+		}
+	}
+	return h.handleJSONResponse(ctx, w, bytes.NewReader(converted), false, metrics)
+}
+
+// handleClaudeUpstreamStream pipes a Claude Messages SSE stream to a Chat
+// Completions client, translating each event into an OpenAI chunk.
+func (h *ChatHandler) handleClaudeUpstreamStream(ctx context.Context, w http.ResponseWriter, upstream io.Reader, startTime time.Time, metrics *streamMetrics) error {
+	hw := internalproxy.NewHeartbeatWriter(ctx, w, 0)
+	defer func() { _ = hw.Close() }()
+	flusher := internalproxy.WriteSSEHeaders(hw)
+	// A Messages stream that omits `model` still has to echo one back, and the
+	// model the client asked for is the value that is actually true.
+	state := &translator.ClaudeToOpenAIStreamState{Model: translator.RequestedModelFromContext(ctx)}
+	done := false
+	err := internalproxy.ScanStream(upstream, func(payload []byte) {
+		if done {
+			return
+		}
+		if string(bytes.TrimSpace(payload)) == "[DONE]" {
+			done = true
+			return
+		}
+		out, terr := translator.TranslateClaudeChunkToOpenAI(payload, state)
+		if terr != nil {
+			log.Error("stream", "claude chunk translate error", "error", terr)
+			return
+		}
+		if len(out) == 0 {
+			return
+		}
+		if metrics.TTFT == 0 {
+			metrics.TTFT = time.Since(startTime).Milliseconds()
+		}
+		_, _ = metrics.ResponseBuf.Write(out)
+		if _, werr := hw.Write(out); werr != nil {
+			return
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+		if bytes.Contains(out, []byte("[DONE]")) {
+			done = true
+		}
+	})
+	if state.Usage != nil {
+		translator.SetUsage(ctx, state.Usage)
+	}
+	if err != nil {
+		return err
+	}
+	if !done {
+		// The upstream drained without a terminal event: close the stream the
+		// way a natural finish would, so the client does not hang on the read.
+		_, _ = hw.Write([]byte("data: [DONE]\n\n"))
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	return nil
+}
+
+// handleStreamResponse pipes SSE chunks from upstream to the client.
+func (h *ChatHandler) handleStreamResponse(ctx context.Context, w http.ResponseWriter, upstream io.Reader, translate bool, startTime time.Time, metrics *streamMetrics) error {
+	// A /v1/responses client needs Responses events, and translate marks a
+	// Claude client, so this branch is decided by the client format alone. It
+	// runs before the header write because the bridge owns its own writer.
+	if translator.NeedsResponsesBridge(ctx) {
+		// The bridge bounds its own wait for the deferred completion (see
+		// ResponsesBridge.CompletionPending and the completion watchdog), so a
+		// second deadline wrapped around the same read would only be a
+		// duplicate timer racing the first one to the same terminal event.
+		return executor.StreamChatToResponses(ctx, w, upstream, startTime, &metrics.TTFT, &metrics.ResponseBuf)
+	}
+
+	// Peek before the header write. A 200 whose stream opens with an error
+	// frame, an immediate EOF, keep-alives only, or a bare [DONE] carries no
+	// turn — but once `200 text/event-stream` is committed the failure can only
+	// be relayed: combo fallback is over and the account is billed and cooled
+	// down for a reply it never gave. Refusing here keeps the decision
+	// reversible, so the 502 travels back to the account/model loop.
+	//
+	// The returned reader replays the peeked bytes exactly, so a healthy stream
+	// reaches the client byte for byte.
+	_, replayed, peekErr := internalproxy.PeekFirstStreamEvent(ctx, upstream, 0)
+	if peekErr != nil {
+		return peekErr
+	}
+	upstream = replayed
+
+	hw := internalproxy.NewHeartbeatWriter(ctx, w, 0)
+	defer hw.Close()
+	flusher := internalproxy.WriteSSEHeaders(hw)
+
+	if !translate {
+		// Passthrough still repairs id-less tool-call fragments: a provider
+		// opening a new tool-call index without an id aborts strict
+		// OpenAI-compatible clients mid-turn (upstream 95c9d03e).
+		toolFill := internalproxy.NewStreamToolCallIDFill()
+		err := internalproxy.ScanStream(upstream, func(payload []byte) {
+			if patched, changed := toolFill.Fill(payload); changed {
+				payload = patched
+			}
+			if metrics.TTFT == 0 {
+				metrics.TTFT = time.Since(startTime).Milliseconds()
+			}
+			frame := append([]byte("data: "), payload...)
+			frame = append(frame, '\n', '\n')
+			metrics.ResponseBuf.Write(frame)
+			_, _ = hw.Write(frame)
+			if flusher != nil {
+				flusher.Flush()
+			}
+			if usage := translator.ParseResponseUsage(payload); usage != nil {
+				translator.SetUsage(ctx, usage)
+			}
+		})
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	sessionKey := translator.NewSessionKey("stream")
+	// Seed with requested model so message_start echoes client's model (decolua/9router#3693)
+	if reqModel := translator.RequestedModelFromContext(ctx); reqModel != "" {
+		translator.SeedStreamState(sessionKey, reqModel)
+	}
+	// Body-size input estimate seeded before the first chunk: the terminal
+	// usage block falls back to it when the upstream never reports usage, so
+	// the client's context meter still moves and auto-compact can fire.
+	if est := translator.PromptEstimateFromContext(ctx); est > 0 {
+		translator.SeedStreamPromptEstimate(sessionKey, est)
+	}
+	defer func() {
+		if endChunk := translator.EnsureStreamClosed(sessionKey); len(endChunk) > 0 {
+			hw.Write(endChunk)
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		translator.ClearStreamState(sessionKey)
+	}()
+	finished := false
+	err := internalproxy.ScanStream(upstream, func(chunk []byte) {
+		translated, err := translator.TranslateOpenAIToClaudeStreamSession(sessionKey, chunk)
+		if err != nil {
+			log.Error("stream", "translate error", "error", err)
+			return
+		}
+		if translated == nil {
+			return
+		}
+		if bytes.Contains(translated, []byte("[DONE]")) {
+			finished = true
+		}
+		if metrics.TTFT == 0 {
+			metrics.TTFT = time.Since(startTime).Milliseconds()
+		}
+		metrics.ResponseBuf.Write(translated)
+		hw.Write(translated)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	})
+	// A shutdown abort cuts the stream mid-way. End it with the same terminator
+	// a natural finish emits, so the client sees a clean [DONE] instead of a
+	// truncated stream (the stall reader already closed the upstream body).
+	// The terminal message_delta + message_stop go out BEFORE [DONE]: they may
+	// have been deferred waiting for a usage chunk that never came.
+	if shutdown.Fired() && !finished {
+		if endChunk := translator.EnsureStreamClosed(sessionKey); len(endChunk) > 0 {
+			_, _ = hw.Write(endChunk)
+		}
+		hw.Write([]byte("data: [DONE]\n\n"))
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	// Pull actual accumulated usage (incl. cached tokens) out of the session so
+	// the log sees real numbers instead of the fallback estimate.
+	if usage := translator.GetStreamUsage(sessionKey); usage != nil {
+		translator.SetUsage(ctx, usage)
+	}
+	return err
+}
+
+// sseToClaudeJSON aggregates OpenAI SSE chunks into a single chat.completion JSON for forced-SSE handling.
+// Port of executor/codebuddy.go sseToOpenAIJSON for chatCore forced-SSE fix (decolua/9router#3683).
+func sseToClaudeJSON(raw []byte) ([]byte, bool) {
+	var chunks []map[string]any
+	var streamErr map[string]any
+	for _, line := range strings.Split(string(raw), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(trimmed[5:])
+		if payload == "" || payload == "[DONE]" {
+			continue
+		}
+		var chunk map[string]any
+		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+			continue
+		}
+		if e, ok := chunk["error"]; ok {
+			streamErr, _ = e.(map[string]any)
+			continue
+		}
+		chunks = append(chunks, chunk)
+	}
+	if streamErr != nil {
+		b, _ := json.Marshal(map[string]any{"error": streamErr})
+		return b, true
+	}
+	if len(chunks) == 0 {
+		return nil, false
+	}
+	var contentParts, reasoningParts []string
+	toolCallIdx := map[int]map[string]any{}
+	var toolCalls []map[string]any
+	finishReason := "stop"
+	var usage any
+	var first map[string]any
+	for _, chunk := range chunks {
+		if first == nil {
+			first = chunk
+		}
+		choices, _ := chunk["choices"].([]any)
+		if len(choices) == 0 {
+			continue
+		}
+		choice, _ := choices[0].(map[string]any)
+		delta, _ := choice["delta"].(map[string]any)
+		if c, ok := delta["content"].(string); ok && c != "" {
+			contentParts = append(contentParts, c)
+		}
+		if r, ok := delta["reasoning_content"].(string); ok && r != "" {
+			reasoningParts = append(reasoningParts, r)
+		}
+		if fr, ok := choice["finish_reason"].(string); ok {
+			finishReason = fr
+		}
+		if u, ok := chunk["usage"]; ok {
+			usage = u
+		}
+		if tcs, ok := delta["tool_calls"].([]any); ok {
+			for _, tcAny := range tcs {
+				tc, _ := tcAny.(map[string]any)
+				idx, _ := tc["index"].(float64)
+				entry, ok := toolCallIdx[int(idx)]
+				if !ok {
+					entry = map[string]any{
+						"id":       "",
+						"type":     "function",
+						"function": map[string]any{"name": "", "arguments": ""},
+					}
+					toolCallIdx[int(idx)] = entry
+					toolCalls = append(toolCalls, entry)
+				}
+				if id, ok := tc["id"].(string); ok && id != "" {
+					entry["id"] = id
+				}
+				if fn, ok := tc["function"].(map[string]any); ok {
+					fEntry, _ := entry["function"].(map[string]any)
+					if n, ok := fn["name"].(string); ok && n != "" {
+						if existing, _ := fEntry["name"].(string); existing == "" {
+							fEntry["name"] = n
+						} else {
+							fEntry["name"] = existing + n
+						}
+					}
+					if a, ok := fn["arguments"].(string); ok && a != "" {
+						existing, _ := fEntry["arguments"].(string)
+						fEntry["arguments"] = existing + a
+					}
+				}
+			}
+		}
+	}
+	msg := map[string]any{"role": "assistant"}
+	content := strings.Join(contentParts, "")
+	if content == "" {
+		if len(toolCalls) > 0 {
+			msg["content"] = nil
+		} else {
+			msg["content"] = ""
+		}
+	} else {
+		msg["content"] = content
+	}
+	if len(toolCalls) > 0 {
+		msg["tool_calls"] = toolCalls
+	}
+	if len(reasoningParts) > 0 {
+		msg["reasoning_content"] = strings.Join(reasoningParts, "")
+	}
+	if usage == nil {
+		usage = map[string]any{"prompt_tokens": 0, "completion_tokens": len(content) / 4}
+	}
+	id := "chatcmpl-0"
+	if first != nil {
+		if v, ok := first["id"].(string); ok && v != "" {
+			id = v
+		}
+	}
+	model := "gpt-4o"
+	if first != nil {
+		if v, ok := first["model"].(string); ok && v != "" {
+			model = v
+		}
+	}
+	created := int64(0)
+	if first != nil {
+		if v, ok := first["created"].(float64); ok {
+			created = int64(v)
+		}
+	}
+	resp := map[string]any{
+		"id":      id,
+		"object":  "chat.completion",
+		"created": created,
+		"model":   model,
+		"choices": []map[string]any{{
+			"index":         0,
+			"message":       msg,
+			"finish_reason": finishReason,
+		}},
+		"usage": usage,
+	}
+	b, _ := json.Marshal(resp)
+	return b, true
+}
+
+// handleJSONResponse forwards a non-streaming JSON response.
+func (h *ChatHandler) handleJSONResponse(ctx context.Context, w http.ResponseWriter, upstream io.Reader, translate bool, metrics *streamMetrics) error {
+	body, err := io.ReadAll(io.LimitReader(upstream, constants.MaxUpstreamBodyBytes))
+	if err != nil {
+		return fmt.Errorf("read upstream response body: %w", err)
+	}
+
+	body = translator.UnwrapClineEnvelope(body)
+
+	// An SSE-only upstream ignores `stream:false` and answers with an event
+	// stream anyway. Fold it into one chat.completion before validating, so
+	// a stream that never carried a completion is a failure the fallback
+	// layer can act on rather than a 200 the client reads as an empty
+	// answer (port of executor codebuddy.go sseToOpenAIJSON, #3683).
+	if internalproxy.LooksLikeSSE(body) {
+		folded, ok := sseToClaudeJSON(body)
+		if !ok {
+			return internalproxy.UpstreamFailure(http.StatusBadGateway, internalproxy.NoCompletionInStream)
+		}
+		body = folded
+	} else if leadingJSON, ok := extractLeadingJSONObject(body); ok {
+		// Defensive: some upstreams return a valid JSON object followed by a stray
+		// SSE frame (e.g. `{...}data: [DONE]`) on non-streaming requests (#4733).
+		body = leadingJSON
+	}
+
+	if armed, canFallback := internalproxy.ZeroContentProbe(ctx); armed && internalproxy.IsZeroContentResponse(body) {
+		if canFallback {
+			return &internalproxy.ZeroContentError{Body: body}
+		}
+		// The last member of a combo serves its zero-content response normally (FR3).
+	} else if err := internalproxy.EmptyUpstreamError(body); err != nil {
+		return err
+	}
+
+	if metrics != nil {
+		metrics.ResponseBuf.Write(body)
+	}
+
+	// JSON guard (port(serenhope) TASK-2.4): repair malformed markdown fences,
+	// python literals, and truncated JSON in model response text and tool calls.
+	// The round trip uses UnmarshalNumbered: plain v2 decode into `any` collapses
+	// every number to float64, so an int64 ID above 2^53 riding in a tool call
+	// argument would silently change value on the way back to the client even
+	// when the guard changed nothing else (see fastjson.UnmarshalNumbered).
+	var respMap map[string]any
+	if err := json.UnmarshalNumbered(body, &respMap); err == nil {
+		if changed, _ := translator.ApplyJSONGuard(respMap, nil); changed {
+			if repairedBytes, err := json.Marshal(respMap); err == nil {
+				body = repairedBytes
+			}
+		}
+	}
+
+	// Outbound guardrails: the last point before the answer reaches the client.
+	// It sits after the empty-response check so a blocked body is not mistaken
+	// for a provider failure, and before the translate step so the policy sees
+	// the model's own words rather than a reshaped envelope.
+	filtered, gerr := guardrails.ApplyBuffered(ctx, body)
+	if gerr != nil {
+		return guardrailBlockedError()
+	}
+	body = filtered
+
+	// A /v1/responses client on a Chat Completions upstream needs the answer in
+	// the Responses shape; translate marks a Claude client, which it is not.
+	if translator.NeedsResponsesBridge(ctx) {
+		return h.respondAsResponses(ctx, w, body)
+	}
+
+	if !translate {
+		// The !translate path serves both OpenAI bodies (/v1/chat/completions,
+		// translateResponse hardcoded false) and Claude bodies (claude/anthropic
+		// providers). ParseResponseUsage handles both formats.
+		if usage := translator.ParseResponseUsage(body); usage != nil {
+			translator.SetUsage(ctx, usage)
+		} else if usage := translator.ParseOllamaUsage(body); usage != nil {
+			// Ollama's native shape carries its counters at the top level, not
+			// under `usage`, so ParseResponseUsage finds nothing there.
+			translator.SetUsage(ctx, usage)
+		}
+		if h.SemanticCache != nil && h.SemanticCache.Enabled() {
+			if cachedReq := semanticcache.CachedRequestFromContext(ctx); cachedReq != nil {
+				_ = h.SemanticCache.Store(ctx, cachedReq, body, "application/json")
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(body)
+		return nil
+	}
+
+	translated, usage, err := translator.TranslateOpenAIToClaude(body)
+	if err == nil && usage != nil {
+		translator.SetUsage(ctx, usage)
+	}
+	if err != nil || translated == nil {
+		errMsg := "failed to translate upstream response to Claude format"
+		if err != nil {
+			errMsg = errMsg + ": " + err.Error()
+		}
+		log.Error("json", "translate error", "msg", errMsg)
+		handlerutil.WriteJSONError(w, http.StatusBadGateway, errMsg)
+		return errors.New(errMsg)
+	}
+	if h.SemanticCache != nil && h.SemanticCache.Enabled() {
+		if cachedReq := semanticcache.CachedRequestFromContext(ctx); cachedReq != nil {
+			_ = h.SemanticCache.Store(ctx, cachedReq, translated, "application/json")
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(translated)
+	return nil
+}
+
+// respondAsResponses writes a non-streaming Chat Completions body to a
+// /v1/responses client in the Response shape it expects. A body the converter
+// rejects is relayed unchanged rather than dropped: a body in the wrong shape
+// still lets the client report the failure, an empty 200 tells it nothing.
+func (h *ChatHandler) respondAsResponses(ctx context.Context, w http.ResponseWriter, body []byte) error {
+	// A Responses client that asked for a single JSON can still be handed an
+	// SSE stream when the provider forces one (Codex does). Aggregate it
+	// first rather than answering a client that expects JSON with a stream.
+	if internalproxy.LooksLikeSSE(body) {
+		if aggregated, ok := sseToClaudeJSON(body); ok {
+			body = aggregated
+		}
+	}
+	converted, err := translator.ChatResponseToResponses(body)
+	if err == nil {
+		if usage := translator.ParseResponseUsage(body); usage != nil {
+			translator.SetUsage(ctx, usage)
+		}
+		body = converted
+	} else {
+		log.Error("chat", "responses json translate error", "error", err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(body)
+	return nil
+}
+
+// extractLeadingJSONObject extracts the first balanced top-level JSON object from a byte slice
+// that may have trailing SSE framing (e.g. `{...}data: [DONE]\n\n`). Upstream #5384 (#4733).
+func extractLeadingJSONObject(b []byte) ([]byte, bool) {
+	start := bytes.IndexByte(b, '{')
+	if start == -1 {
+		return nil, false
+	}
+	depth := 0
+	inString := false
+	escaped := false
+
+	for i := start; i < len(b); i++ {
+		ch := b[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' {
+			escaped = true
+			continue
+		}
+		if ch == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		switch ch {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				candidate := b[start : i+1]
+				var check any
+				if json.Unmarshal(candidate, &check) == nil {
+					// Only report stripped if there actually was trailing content
+					if i+1 < len(b) && len(bytes.TrimSpace(b[i+1:])) > 0 {
+						return candidate, true
+					}
+					return nil, false
+				}
+				return nil, false
+			}
+		}
+	}
+	return nil, false
+}

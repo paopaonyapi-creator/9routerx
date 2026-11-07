@@ -1,0 +1,239 @@
+// 9RouterX — all source code port and modification by https://github.com/yanstd888/ — https://t.me/aiclub_id
+package proxy
+
+import (
+	"bytes"
+	"context"
+	json "encoding/json/v2"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+
+	"9routerx/proxy/internal/constants"
+	"9routerx/proxy/internal/handlerutil"
+	"9routerx/proxy/internal/log"
+	"9routerx/proxy/internal/providers"
+	"9routerx/proxy/internal/translator"
+)
+
+// ForwardGemini sends an OpenAI-format request to a Gemini-native endpoint.
+// projectID is non-empty for antigravity (cloudcode-pa.googleapis.com).
+func ForwardGemini(ctx context.Context, client *http.Client, cfg *providers.ProviderConfig, apiKey, bodyStr string, isStream bool, projectID, modelName string) (*http.Response, error) {
+	body := []byte(bodyStr)
+	if projectID != "" {
+		// Body-inspecting tier resolution (upstream getModelUpstreamId): an
+		// unadorned id follows the client's reasoning effort when the catalog
+		// has that variant.
+		modelName = translator.AntigravityTieredModel(modelName, body)
+	}
+
+	var sendBody []byte
+	if projectID != "" && translator.IsAntigravityImageModel(modelName) {
+		isStream = false
+		cleanModel, aspectRatio := translator.ParseImageConfig(modelName)
+
+		var oreq struct {
+			Prompt   string `json:"prompt"`
+			Messages []struct {
+				Content any `json:"content"`
+			} `json:"messages"`
+		}
+		prompt := ""
+		if err := json.Unmarshal(body, &oreq); err == nil {
+			if oreq.Prompt != "" {
+				prompt = oreq.Prompt
+			} else {
+				for _, m := range oreq.Messages {
+					if s, ok := m.Content.(string); ok && s != "" {
+						prompt = s
+					}
+				}
+			}
+		}
+
+		wrapped, err := translator.WrapAntigravityImageRequest(prompt, "", projectID, cleanModel, aspectRatio)
+		if err != nil {
+			return nil, fmt.Errorf("wrap antigravity image: %w", err)
+		}
+		sendBody = wrapped
+	} else {
+		// Translate OpenAI → Gemini native
+		geminiBody, err := translator.TranslateOpenAIToGeminiWithSession(body, handlerutil.GetSessionID(ctx))
+		if err != nil {
+			return nil, fmt.Errorf("translate to Gemini: %w", err)
+		}
+		if translator.GeminiSafetyRequested(ctx) {
+			geminiBody, err = translator.ApplyGeminiSafetySettings(geminiBody)
+			if err != nil {
+				return nil, fmt.Errorf("apply safetySettings: %w", err)
+			}
+		}
+
+		// Wrap for antigravity if needed
+		sendBody = geminiBody
+		if projectID != "" {
+			wrapped, err := translator.WrapForAntigravity(geminiBody, projectID, modelName)
+			if err != nil {
+				return nil, fmt.Errorf("wrap for antigravity: %w", err)
+			}
+			sendBody = wrapped
+		}
+	}
+
+	// Build URL
+	baseURL := strings.TrimRight(cfg.BaseURL, "/")
+	if idx := strings.Index(baseURL, "/v1beta/openai"); idx != -1 {
+		baseURL = baseURL[:idx]
+	} else if idx := strings.Index(baseURL, "/v1/"); idx != -1 {
+		baseURL = baseURL[:idx]
+	}
+
+	action := "generateContent"
+	if isStream {
+		action = "streamGenerateContent?alt=sse"
+	}
+	var requestURL string
+	if projectID != "" {
+		requestURL = fmt.Sprintf("%s/v1internal:%s", baseURL, action)
+	} else {
+		requestURL = fmt.Sprintf("%s/v1beta/models/%s:%s", baseURL, modelName, action)
+	}
+
+	headers := map[string]string{
+		"Content-Type":  "application/json",
+		"Authorization": "Bearer " + apiKey,
+		"User-Agent":    providers.AntigravityCLIUserAgent,
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", requestURL, bytes.NewReader(sendBody))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, err
+		}
+		if isTransientGeminiTransportError(err) {
+			return nil, UpstreamFailure(http.StatusBadGateway, fmt.Sprintf("ForwardGemini antigravity transport: %v", err))
+		}
+		return nil, fmt.Errorf("upstream request: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		errBody, readErr := io.ReadAll(io.LimitReader(resp.Body, constants.UpstreamErrLimit))
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("upstream returned %d and body read failed: %w", resp.StatusCode, readErr)
+		}
+		// Always dump 400 INVALID_ARGUMENT payloads for post-mortem (covers
+		// "items.items: missing field." and other schema rejections).
+		if resp.StatusCode == http.StatusBadRequest {
+			_ = os.WriteFile("/tmp/9router-gemini-400.json", sendBody, 0644)
+			preview := sendBody
+			if len(preview) > 8000 {
+				preview = preview[:8000]
+			}
+			log.Warn("gemini", "dumped 400 request to /tmp/9router-gemini-400.json", "model", modelName, "bytes", len(sendBody), "error", string(errBody[:min(500, len(errBody))]), "preview", string(preview))
+		}
+		if bytes.Contains(errBody, []byte("thought signature")) || bytes.Contains(errBody, []byte("Thought signature")) {
+			_ = os.WriteFile("/tmp/9router-ag-debug.json", sendBody, 0644)
+			log.Warn("gemini", "dumped thought-signature request to /tmp/9router-ag-debug.json", "model", modelName, "bytes", len(sendBody), "error", string(errBody[:min(200, len(errBody))]))
+			preview := sendBody
+			if len(preview) > 4000 {
+				preview = preview[:4000]
+			}
+			log.Warn("gemini", "thought-signature preview", "preview", string(preview))
+
+			// Retry with a known-valid default signature. Stripping makes
+			// Gemini 3 complain about missing signature; replacing with the
+			// default (same as Next.js backfill) gives the backend a
+			// signature it accepts for the cloaked tool history.
+			replaced := translator.ReplaceThoughtSignatures(sendBody, translator.DefaultThinkingSignature)
+			if !bytes.Equal(replaced, sendBody) {
+				log.Warn("gemini", "retrying with default thoughtSignature", "model", modelName)
+				req2, err := http.NewRequestWithContext(ctx, "POST", requestURL, bytes.NewReader(replaced))
+				if err == nil {
+					for k, v := range headers {
+						req2.Header.Set(k, v)
+					}
+					if resp2, err := client.Do(req2); err == nil {
+						if resp2.StatusCode == http.StatusOK {
+							return resp2, nil
+						}
+						errBody2, _ := io.ReadAll(io.LimitReader(resp2.Body, constants.UpstreamErrLimit))
+						resp2.Body.Close()
+						log.Warn("gemini", "retry with default thoughtSignature also failed", "status", resp2.StatusCode, "body", string(errBody2[:min(500, len(errBody2))]))
+						// Fall through to try stripping as last resort
+						if bytes.Contains(errBody2, []byte("thought signature")) || bytes.Contains(errBody2, []byte("Thought signature")) {
+							stripped := translator.StripThoughtSignatures(replaced)
+							if !bytes.Equal(stripped, replaced) {
+								log.Warn("gemini", "retrying without thoughtSignature", "model", modelName)
+								req3, err := http.NewRequestWithContext(ctx, "POST", requestURL, bytes.NewReader(stripped))
+								if err == nil {
+									for k, v := range headers {
+										req3.Header.Set(k, v)
+									}
+									if resp3, err := client.Do(req3); err == nil {
+										if resp3.StatusCode == http.StatusOK {
+											return resp3, nil
+										}
+										errBody3, _ := io.ReadAll(io.LimitReader(resp3.Body, constants.UpstreamErrLimit))
+										resp3.Body.Close()
+										log.Warn("gemini", "retry without thoughtSignature also failed", "status", resp3.StatusCode, "body", string(errBody3[:min(500, len(errBody3))]))
+										return nil, &UpstreamError{StatusCode: resp3.StatusCode, Body: errBody3, Header: resp3.Header}
+									}
+								}
+							}
+						}
+						return nil, &UpstreamError{StatusCode: resp2.StatusCode, Body: errBody2, Header: resp2.Header}
+					}
+				}
+			}
+		}
+		return nil, &UpstreamError{StatusCode: resp.StatusCode, Body: errBody, Header: resp.Header}
+	}
+	return resp, nil
+}
+
+// isTransientGeminiTransportError reports whether a client.Do failure is a
+// transient upstream fault (header timeout, HTTP/2 stream timeout, EOF)
+// that the combo layer should fail over on — mirroring upstream's
+// ANTIGRAVITY_TRANSIENT_ERROR_PATTERNS (/timeout/i) and DEFAULT_RETRY_CONFIG
+// 502 handling. A plain error here is not UpstreamError, so the combo loop
+// treats it as a terminal 502 without the RetryableStatusCodes lock/
+// exclusion path and without retrying.
+func isTransientGeminiTransportError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && urlErr.Timeout() {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	for _, needle := range []string{
+		"http2: timeo",
+		"timeout awaiting response headers",
+		"awaiting response headers",
+		"server closed idle connection",
+		"eof",
+		"connection reset by peer",
+		"connection refused",
+	} {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
+}

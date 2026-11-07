@@ -1,0 +1,110 @@
+# Build artifacts
+/9routerx
+/9routerx-*
+/SHA256SUMS.txt
+*.exe
+*.exe~
+web/dist/
+web/.dist-stamp
+_site/
+
+# Test binaries
+*.test
+*.out
+
+# Logs
+*.log
+/tmp/*.log
+
+# Data directory
+.9router/
+data/
+
+# Local demo gateway: its SQLite data dir, engine key and captured streams. The
+# key alone is enough to talk to the running gateway as a client, so none of it
+# belongs in a commit.
+.demo/
+
+# Local overrides
+docker-compose.local.yml
+
+# Environment
+.env
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+graphify-out
+node_modules/
+web/node_modules/
+stitch-screens/
+stitch-screenshots/
+
+# Git worktrees — each is a nested repo, so `git add -A` will happily stage
+# them as embedded gitlinks. A worktree caught in a commit has to be undone
+# with `git rm --cached` before it reaches the remote.
+.worktrees/
+.smoke-data/
+.superpowers/
+
+# A pasted browser-login credential for scripts/deepseek-web-live.sh. Never
+# belongs in a commit, and `git add -A` would otherwise stage it silently.
+.ds-token
+
+/opencode-go
+/opencode-go-*
+
+# Per-machine AI agent harness config. These directories hold tooling that is
+# installed locally, not project content: a committed `.claude/settings.json`
+# or `.agents/` tree makes every checkout inherit another machine's hooks.
+# The project's own instructions — CLAUDE.md and AGENTS.md — stay tracked.
+/.claude/
+/.agents/
+/.gemini/
+/.cursor/
+/.codex/
+/.continue/
+/.aider*
+/.mcp.json
+/.clinerules
+/.windsurfrules
+/GEMINI.md
+/QWEN.md
+/COPILOT.md
+
+# Local agent-tooling config (not part of the product). The .claude/ and
+# .agents/ trees are already covered by the harness block above.
+.omo/run-continuation/
+.omo/omo.jsonc
+.omp/settings.json
+
+# skills CLI (npx skills add) byproducts — same class as the harness block:
+# per-machine agent tooling, not product content. The installed skill files
+# themselves land in the ignored /.agents/ tree.
+/agent/
+/skills/
+/skills-lock.json
+
+# shadcn-svelte dashboard audit screenshots (local evidence only)
+/audit-screens-shadcn/
+
+# Screenshots captured for a pull-request body. They are untracked on purpose:
+# the body's raw URLs point at the commit they were pushed in, so they keep
+# resolving without a second copy entering history. Add one here if you want it
+# kept; docs/screenshots/ is for the ones the site and README reference.
+/pr-*.png
+
+# runtime data (test runs)
+/.9routerx-run/
+
+# UI audit capture output (screenshots + geometry JSONL) — local evidence only
+/audit-screens/
+/audit-screens-polish/
+
+# Mobile audit screenshots (local only)
+audit-screens-mobile/
+/audit-screens-pass2/
+
+# Updater banner audit screenshots (local only)
+/audit-screens-updater/

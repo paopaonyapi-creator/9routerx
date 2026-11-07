@@ -1,0 +1,832 @@
+// 9RouterX — derived from the work of https://github.com/yanstd888/ — port and modifications by the maintainers — https://t.me/aiclub_id
+package db
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"time"
+)
+
+// usageHistoryColumns is the projection every usageHistory reader shares.
+const usageHistoryColumns = `SELECT timestamp, COALESCE(provider, ''), COALESCE(model, ''), COALESCE(connectionId, ''),
+	       COALESCE(apiKey, ''), COALESCE(endpoint, ''), COALESCE(promptTokens, 0),
+	       COALESCE(completionTokens, 0), COALESCE(cost, 0.0), COALESCE(status, 'ok'), COALESCE(tokens, '{}')
+		FROM usageHistory`
+
+// The three usageHistory reads are named constants because
+// usage_query_plan_test.go runs EXPLAIN QUERY PLAN against them. The plan is the
+// contract: ordering by rowid forces a full scan that grows with the table and
+// runs on the dashboard's 5-second poll, while `timestamp` is covered by
+// idx_uh_ts. Keeping the SQL here means that test pins what these functions
+// execute rather than a copy that could drift (#138).
+const (
+	usageHistorySinceQuery = usageHistoryColumns + `
+		WHERE timestamp >= ?
+		ORDER BY timestamp DESC
+	`
+	usageHistoryBetweenQuery = usageHistoryColumns + `
+		WHERE timestamp > ? AND timestamp <= ?
+		ORDER BY timestamp ASC
+	`
+	usageHistoryRecentQuery = usageHistoryColumns + `
+		ORDER BY timestamp DESC
+		LIMIT ?
+	`
+)
+
+// GetUsageDaily returns the daily usage JSON data for a given date key.
+func (r *Repo) GetUsageDaily(dateKey string) (string, error) {
+	var data string
+	err := r.db.QueryRow(`SELECT data FROM usageDaily WHERE dateKey = ?`, dateKey).Scan(&data)
+	if err != nil {
+		return "", fmt.Errorf("get daily usage %s: %w", dateKey, err)
+	}
+	return data, nil
+}
+
+// InsertUsageHistory logs a single request's token usage to the usageHistory table.
+//
+// clientKey is the CLIENT key that sent the request, masked, and it is what a
+// per-key token budget is measured from (#365). It is a trailing variadic so the
+// call sites that have no client attribution (migrations, fixtures) keep
+// compiling unchanged: only the live request path knows the caller.
+//
+// A second variadic element names the billing team the row was earned under
+// (tenant cost centers, teams.go). The stamp is copied at insert time on
+// purpose: re-pointing a key to another team must never rewrite history, and a
+// window that spans the move has to report both sides. The column is what
+// TeamUsageReport and TeamSpendInWindow read, so a row inserted without the
+// stamp is spend no team report can ever see. The caller resolves the team
+// once per request with BillingTeamIDForKey(callerID) — best-effort by that
+// read's own contract, so an attribution failure degrades to an unattributed
+// row rather than a lost usage record.
+//
+// The stamp degrades on a ledger the additive pass never reached: a table
+// created from the upstream core shape alone has no billingTeamId column, and
+// the insert must lose the attribution rather than the row (the same
+// pre-#365 convention the quotaResetId readers use). The probe is cached, so
+// the hot path pays one branch after the first insert.
+func (r *Repo) InsertUsageHistory(provider, model, connectionID, apiKey, endpoint string, promptTokens, completionTokens int, cost float64, status string, totalTokens int, meta string, tokensJSON string, clientKey ...string) error {
+	attributedTo := ""
+	billingTeam := ""
+	if len(clientKey) > 0 {
+		attributedTo = clientKey[0]
+	}
+	if len(clientKey) > 1 {
+		billingTeam = clientKey[1]
+	}
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	if !r.usageTeamColumnPresent() {
+		_, err := r.db.Exec(
+			`INSERT INTO usageHistory (timestamp, provider, model, connectionId, apiKey, clientKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			timestamp, provider, model, connectionID, apiKey, attributedTo, endpoint, promptTokens, completionTokens, cost, status, tokensJSON, meta,
+		)
+		if err != nil {
+			return fmt.Errorf("insert usage history: %w", err)
+		}
+		return nil
+	}
+	_, err := r.db.Exec(
+		`INSERT INTO usageHistory (timestamp, provider, model, connectionId, apiKey, clientKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, billingTeamId)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		timestamp, provider, model, connectionID, apiKey, attributedTo, endpoint, promptTokens, completionTokens, cost, status, tokensJSON, meta, billingTeam,
+	)
+	if err != nil {
+		return fmt.Errorf("insert usage history: %w", err)
+	}
+	return nil
+}
+
+// UpsertUsageDaily inserts or replaces a daily usage aggregation record.
+// The data parameter should be a JSON string matching the 9routerx daily aggregation format.
+// NOTE: INSERT OR REPLACE is an atomic full-row replace of the pre-merged JSON
+// blob. Merging happens in-process (see handlers/chat/usage.go dailyUsageMu), so
+// concurrent writers from MULTIPLE processes can still clobber each other. This
+// is documented as single-writer unless the aggregation moves SQL-side.
+func (r *Repo) UpsertUsageDaily(dateKey string, data string) error {
+	_, err := r.db.Exec(
+		`INSERT OR REPLACE INTO usageDaily (dateKey, data) VALUES (?, ?)`,
+		dateKey, data,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert daily usage %s: %w", dateKey, err)
+	}
+	return nil
+}
+
+// InsertRequestDetail logs a request detail record for the Recent Requests dashboard tab.
+func (r *Repo) InsertRequestDetail(id, provider, model, connectionID, status string, data string) error {
+	timestamp := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	_, err := r.db.Exec(
+		`INSERT OR IGNORE INTO requestDetails (id, timestamp, provider, model, connectionId, status, data) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, timestamp, provider, model, connectionID, status, data,
+	)
+	if err != nil {
+		return fmt.Errorf("insert request detail %s: %w", id, err)
+	}
+	return nil
+}
+
+// UsageHistoryRow represents a record from the usageHistory table.
+type UsageHistoryRow struct {
+	Timestamp        string
+	Provider         string
+	Model            string
+	ConnectionID     string
+	APIKey           string
+	Endpoint         string
+	PromptTokens     int
+	CompletionTokens int
+	Cost             float64
+	Status           string
+	Tokens           string
+}
+
+// GetUsageDailyRecent returns the most recent daily usage records up to limit.
+
+func (r *Repo) GetUsageDailyRecent(limit int) ([]string, error) {
+	rows, err := r.db.Query(`SELECT data FROM usageDaily ORDER BY dateKey DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query recent usageDaily: %w", err)
+	}
+	defer rows.Close()
+
+	var res []string
+	for rows.Next() {
+		var data string
+		if err := rows.Scan(&data); err != nil {
+			return nil, fmt.Errorf("scan usageDaily recent: %w", err)
+		}
+		res = append(res, data)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate usageDaily recent: %w", err)
+	}
+	return res, nil
+}
+
+// UsageDailyRow is one usageDaily row: the local date key plus its aggregate
+// payload. The chart endpoint needs the key (the existing
+// GetUsageDailyRecent drops it), so this keeps both.
+type UsageDailyRow struct {
+	DateKey string
+	Data    string
+}
+
+// GetUsageDailyRange returns the most recent daily usage rows up to limit,
+// newest first, each with its dateKey.
+func (r *Repo) GetUsageDailyRange(limit int) ([]UsageDailyRow, error) {
+	rows, err := r.db.Query(`SELECT dateKey, data FROM usageDaily ORDER BY dateKey DESC LIMIT ?`, limit) //nolint:noctx
+	if err != nil {
+		return nil, fmt.Errorf("query usageDaily range: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var res []UsageDailyRow
+	for rows.Next() {
+		var row UsageDailyRow
+		if err := rows.Scan(&row.DateKey, &row.Data); err != nil {
+			return nil, fmt.Errorf("scan usageDaily range: %w", err)
+		}
+		res = append(res, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate usageDaily range: %w", err)
+	}
+	return res, nil
+}
+
+// UsageGroupRow is one provider (or provider+model) aggregate over a time
+// window, used by the usage dashboard's node-health table.
+type UsageGroupRow struct {
+	Provider         string
+	Model            string
+	Requests         int
+	Errors           int
+	PromptTokens     int
+	CompletionTokens int
+	Cost             float64
+	LastUsed         string
+}
+
+const usageGroupStats = `
+	COUNT(*) AS requests,
+	SUM(CASE WHEN status NOT IN ('ok', 'success') THEN 1 ELSE 0 END) AS errors,
+	COALESCE(SUM(promptTokens), 0) AS promptTokens,
+	COALESCE(SUM(completionTokens), 0) AS completionTokens,
+	COALESCE(SUM(cost), 0) AS cost,
+	MAX(timestamp) AS lastUsed
+`
+
+func scanUsageGroupRows(rows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+}, op string) ([]UsageGroupRow, error) {
+	var res []UsageGroupRow
+	for rows.Next() {
+		var row UsageGroupRow
+		if err := rows.Scan(
+			&row.Provider, &row.Model, &row.Requests, &row.Errors,
+			&row.PromptTokens, &row.CompletionTokens, &row.Cost, &row.LastUsed,
+		); err != nil {
+			return nil, fmt.Errorf("scan usage group %s: %w", op, err)
+		}
+		res = append(res, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate usage group %s: %w", op, err)
+	}
+	return res, nil
+}
+
+// GetUsageGroupByProviderSince aggregates usageHistory per provider since the
+// cutoff. The model column is a constant empty string: provider rows have no
+// single model, and the shared scanner expects both key columns.
+func (r *Repo) GetUsageGroupByProviderSince(since string) ([]UsageGroupRow, error) {
+	rows, err := r.db.Query( //nolint:noctx,rowserrcheck
+		`SELECT COALESCE(provider, ''), '', `+usageGroupStats+`
+		   FROM usageHistory WHERE timestamp >= ? GROUP BY COALESCE(provider, '')`, since)
+	if err != nil {
+		return nil, fmt.Errorf("query usage group by provider: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	return scanUsageGroupRows(rows, "provider")
+}
+
+// GetUsageGroupByModelSince aggregates usageHistory per provider+model since
+// the cutoff.
+func (r *Repo) GetUsageGroupByModelSince(since string) ([]UsageGroupRow, error) {
+	rows, err := r.db.Query( //nolint:noctx,rowserrcheck
+		`SELECT COALESCE(provider, ''), COALESCE(model, ''), `+usageGroupStats+`
+		   FROM usageHistory WHERE timestamp >= ? GROUP BY COALESCE(provider, ''), COALESCE(model, '')`, since)
+	if err != nil {
+		return nil, fmt.Errorf("query usage group by model: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	return scanUsageGroupRows(rows, "model")
+}
+
+// FoldUsageGroupByProvider collapses model-level group rows into the
+// provider-level rows GetUsageGroupByProviderSince would have queried.
+//
+// It exists so the dashboard can answer both tables from one scan of the
+// window. The two reads were separate GROUP BY passes over the same rows, and
+// on a 305k-row ledger they measured 22ms and 37ms — the fold below costs 33µs
+// and the sums are identical, because a provider's total is by definition the
+// sum of its models' totals. A model row that carries the provider's own name
+// (the "no model" bucket) is just another addend.
+//
+// The order of the result follows first appearance in rows, so callers that
+// sort afterwards are unaffected; callers that do not must not depend on it.
+func FoldUsageGroupByProvider(rows []UsageGroupRow) []UsageGroupRow {
+	index := make(map[string]int, len(rows))
+	out := make([]UsageGroupRow, 0, len(rows))
+	for _, row := range rows {
+		i, seen := index[row.Provider]
+		if !seen {
+			index[row.Provider] = len(out)
+			out = append(out, UsageGroupRow{Provider: row.Provider})
+			i = len(out) - 1
+		}
+		agg := &out[i]
+		agg.Requests += row.Requests
+		agg.Errors += row.Errors
+		agg.PromptTokens += row.PromptTokens
+		agg.CompletionTokens += row.CompletionTokens
+		agg.Cost += row.Cost
+		if row.LastUsed > agg.LastUsed {
+			agg.LastUsed = row.LastUsed
+		}
+	}
+	return out
+}
+
+// TopUsageGroupByTokens returns the provider/model row that consumed the most
+// tokens, folding the prompt and completion columns the caller already has.
+//
+// GetUsageTopModelSince answers the same question with its own GROUP BY, which
+// was a third pass over the window for one row. Given the model-level rows the
+// dashboard already read, the answer is a single linear scan with no query at
+// all. Ties break on provider then model, matching the ORDER BY the SQL used.
+func TopUsageGroupByTokens(rows []UsageGroupRow) (provider, model string, tokens int64, ok bool) {
+	for _, row := range rows {
+		total := int64(row.PromptTokens) + int64(row.CompletionTokens)
+		if !ok || total > tokens || (total == tokens && (row.Provider < provider ||
+			(row.Provider == provider && row.Model < model))) {
+			provider, model, tokens, ok = row.Provider, row.Model, total, true
+		}
+	}
+	return provider, model, tokens, ok
+}
+
+// GetUsageTopModelSince returns the model that consumed the most tokens since
+// the cutoff, with the provider it ran on. The aggregate runs in SQL: reading
+// the window's rows into the process to fold them there cost a transfer of
+// every row in the window for two numbers.
+func (r *Repo) GetUsageTopModelSince(since string) (provider, model string, tokens int64, ok bool, err error) {
+	err = r.db.QueryRow( //nolint:noctx
+		`SELECT COALESCE(provider, ''), COALESCE(model, ''),
+		        SUM(COALESCE(promptTokens, 0) + COALESCE(completionTokens, 0))
+		   FROM usageHistory WHERE timestamp >= ?
+		  GROUP BY COALESCE(provider, ''), COALESCE(model, '')
+		  ORDER BY 3 DESC, 1, 2
+		  LIMIT 1`, since).
+		Scan(&provider, &model, &tokens)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", 0, false, nil
+	}
+	if err != nil {
+		return "", "", 0, false, fmt.Errorf("query usage top model since %s: %w", since, err)
+	}
+	return provider, model, tokens, true, nil
+}
+
+// GetUsageCacheHitTotalsSince returns the cached and total input tokens of the
+// window, as the cache-hit rate counts them.
+//
+// The counters live in the row's tokens JSON, so the read has to reach the
+// row; it does that in SQL instead of in the process, because the process
+// version shipped every row of the window — including the JSON payload — into
+// memory to fold it there.
+//
+// The rules mirror the ones the row-level fold used:
+//   - cached tokens are `cached_tokens`, and `cache_read_input_tokens` when
+//     the first is zero;
+//   - the input is the row's own promptTokens, and the JSON's prompt_tokens
+//     when that column is zero;
+//   - a request whose whole input is a cache read with no write is a
+//     distorted import and stays out of both sums;
+//   - the denominator is max(input, cached + writes), so a cache-exclusive
+//     row counts its cached part.
+func (r *Repo) GetUsageCacheHitTotalsSince(since string) (hit, total int64, err error) {
+	err = r.db.QueryRow( //nolint:noctx
+		`WITH raw AS (
+		   SELECT COALESCE(promptTokens, 0) AS prompt_column,
+		          CASE WHEN json_valid(tokens) THEN COALESCE(json_extract(tokens, '$.cached_tokens'), 0) ELSE 0 END AS cached_primary,
+		          CASE WHEN json_valid(tokens) THEN COALESCE(json_extract(tokens, '$.cache_read_input_tokens'), 0) ELSE 0 END AS cached_read,
+		          CASE WHEN json_valid(tokens) THEN COALESCE(json_extract(tokens, '$.cache_creation_input_tokens'), 0) ELSE 0 END AS creation,
+		          CASE WHEN json_valid(tokens) THEN COALESCE(json_extract(tokens, '$.prompt_tokens'), 0) ELSE 0 END AS prompt_json
+		     FROM usageHistory WHERE timestamp >= ?
+		 ), resolved AS (
+		   SELECT CASE WHEN cached_primary != 0 THEN cached_primary ELSE cached_read END AS cached,
+		          CASE WHEN prompt_column != 0 THEN prompt_column ELSE prompt_json END AS prompt,
+		          creation
+		     FROM raw
+		 ), counted AS (
+		   SELECT cached, prompt, creation
+		     FROM resolved
+		    WHERE cached > 0 AND prompt > 0 AND NOT (cached = prompt AND creation <= 0)
+		 )
+		 SELECT COALESCE(SUM(cached), 0),
+		        COALESCE(SUM(MAX(prompt, cached + creation)), 0)
+		   FROM counted`, since).
+		Scan(&hit, &total)
+	if err != nil {
+		return 0, 0, fmt.Errorf("query usage cache hit totals since %s: %w", since, err)
+	}
+	return hit, total, nil
+}
+
+// RequestDetailPerfRow is one latency observation from the requestDetails
+// ring. The numbers are read out of the stored payload by SQL, so the read
+// never ships the payload itself: a stored request carries the request
+// messages and the response body, and the ring holds thousands of them, so
+// fetching every payload made the node-health table scale with the size of
+// the stored traffic rather than with the number of rows.
+type RequestDetailPerfRow struct {
+	Provider         string
+	Model            string
+	TTFTMs           int64
+	TotalMs          int64
+	CompletionTokens int64
+	OutputTokens     int64
+}
+
+// requestDetailPerfSelect reads the latency and output numbers out of the
+// stored payload. json_valid guards the extraction: a row whose payload is
+// not JSON makes json_extract fail, and a broken row must read as "no
+// observation" rather than take the whole read down.
+const requestDetailPerfSelect = `
+	SELECT COALESCE(provider, ''), COALESCE(model, ''),
+	       CASE WHEN json_valid(data) THEN COALESCE(json_extract(data, '$.latency.ttft'), 0) ELSE 0 END,
+	       CASE WHEN json_valid(data) THEN COALESCE(json_extract(data, '$.latency.total'), 0) ELSE 0 END,
+	       CASE WHEN json_valid(data) THEN COALESCE(json_extract(data, '$.tokens.completion_tokens'), 0) ELSE 0 END,
+	       CASE WHEN json_valid(data) THEN COALESCE(json_extract(data, '$.tokens.output_tokens'), 0) ELSE 0 END
+	FROM requestDetails`
+
+// GetRequestDetailPerf returns the latency observation of every request
+// detail. The ring is retention-bounded, so this stays cheap; it is the
+// gateway's only source of per-request latency for the node-health table.
+func (r *Repo) GetRequestDetailPerf() ([]RequestDetailPerfRow, error) {
+	rows, err := r.db.Query(requestDetailPerfSelect) //nolint:noctx
+	if err != nil {
+		return nil, fmt.Errorf("query request detail perf: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var res []RequestDetailPerfRow
+	for rows.Next() {
+		var row RequestDetailPerfRow
+		if err := rows.Scan(&row.Provider, &row.Model, &row.TTFTMs, &row.TotalMs,
+			&row.CompletionTokens, &row.OutputTokens); err != nil {
+			return nil, fmt.Errorf("scan request detail perf: %w", err)
+		}
+		res = append(res, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate request detail perf: %w", err)
+	}
+	return res, nil
+}
+
+// ModelLatencyAgg is one model's mean responsiveness over the retained window.
+// Either average may be zero — a model whose responses never reported a
+// first-token time has a total but no TTFT — so a consumer must read the
+// Samples count alongside the numbers rather than treating zero as "fast".
+type ModelLatencyAgg struct {
+	Provider string
+	Model    string
+	TTFTMs   int64
+	TotalMs  int64
+	Samples  int64
+}
+
+// GetModelLatency aggregates the requestDetails ring into one mean-latency row
+// per provider/model pair. It lives beside the read it summarises so the two
+// cannot disagree about what a buffered flush means: the node-health table
+// folds the same rows in the handler, and a second implementation of that fold
+// would drift the moment either changed its mind.
+//
+// The aggregation is done in Go rather than SQL because the fold has a rule a
+// query cannot express cheaply — a burst faster than 300 tok/s is a buffered
+// flush, so the end-to-end total is the honest duration there, and dampening it
+// keeps fast-but-honest streams from reading as slow ones.
+func (r *Repo) GetModelLatency() ([]ModelLatencyAgg, error) {
+	rows, err := r.GetRequestDetailPerf()
+	if err != nil {
+		return nil, err
+	}
+	type acc struct {
+		total, count    int64
+		ttft, ttftCount int64
+	}
+	byKey := make(map[string]*acc, len(rows))
+	keyOf := func(provider, model string) string { return provider + "|" + model }
+	for _, row := range rows {
+		if row.TotalMs <= 0 {
+			continue
+		}
+		k := keyOf(row.Provider, row.Model)
+		a := byKey[k]
+		if a == nil {
+			a = &acc{}
+			byKey[k] = a
+		}
+		a.total += row.TotalMs
+		a.count++
+		if row.TTFTMs > 0 {
+			a.ttft += row.TTFTMs
+			a.ttftCount++
+		}
+	}
+	out := make([]ModelLatencyAgg, 0, len(byKey))
+	for k, a := range byKey {
+		provider, model := k, ""
+		for i := range len(k) {
+			if k[i] == '|' {
+				provider, model = k[:i], k[i+1:]
+				break
+			}
+		}
+		agg := ModelLatencyAgg{Provider: provider, Model: model, Samples: a.count}
+		if a.count > 0 {
+			agg.TotalMs = a.total / a.count
+		}
+		if a.ttftCount > 0 {
+			agg.TTFTMs = a.ttft / a.ttftCount
+		}
+		out = append(out, agg)
+	}
+	return out, nil
+}
+
+// UsageChartRow is one usageHistory row as the chart needs it: the bucket
+// timestamp, the model the family split is derived from, and the token and
+// cost totals. The chart reads no other column — in particular not the tokens
+// JSON — so it gets its own projection instead of the wide one the stats
+// readers share.
+type UsageChartRow struct {
+	Timestamp        string
+	Model            string
+	PromptTokens     int
+	CompletionTokens int
+	Cost             float64
+}
+
+// usageChartSinceQuery is the chart's projection of the ledger. The order is
+// the caller's business, so the read carries no ORDER BY: the window is
+// scanned through idx_uh_ts, and sorting every row of it afterwards would
+// cost a sort of the whole window for nothing.
+const usageChartSinceQuery = `SELECT timestamp, COALESCE(model, ''),
+	       COALESCE(promptTokens, 0), COALESCE(completionTokens, 0), COALESCE(cost, 0.0)
+	FROM usageHistory
+	WHERE timestamp >= ?`
+
+// GetUsageHistoryChartSince returns the chart projection of the usage history
+// since the cutoff.
+func (r *Repo) GetUsageHistoryChartSince(cutoff string) ([]UsageChartRow, error) {
+	rows, err := r.db.Query(usageChartSinceQuery, cutoff) //nolint:noctx
+	if err != nil {
+		return nil, fmt.Errorf("query usageHistory chart since %s: %w", cutoff, err)
+	}
+	defer func() { _ = rows.Close() }()
+	var res []UsageChartRow
+	for rows.Next() {
+		var row UsageChartRow
+		if err := rows.Scan(&row.Timestamp, &row.Model, &row.PromptTokens,
+			&row.CompletionTokens, &row.Cost); err != nil {
+			return nil, fmt.Errorf("scan usageHistory chart since %s: %w", cutoff, err)
+		}
+		res = append(res, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate usageHistory chart since %s: %w", cutoff, err)
+	}
+	return res, nil
+}
+
+// GetUsageHistorySince returns usage history records since the cutoff timestamp.
+func (r *Repo) GetUsageHistorySince(cutoff string) ([]UsageHistoryRow, error) {
+	rows, err := r.db.Query(usageHistorySinceQuery, cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("query usageHistory since %s: %w", cutoff, err)
+	}
+	defer rows.Close()
+
+	var res []UsageHistoryRow
+	for rows.Next() {
+		var row UsageHistoryRow
+		if err := rows.Scan(
+			&row.Timestamp, &row.Provider, &row.Model, &row.ConnectionID,
+			&row.APIKey, &row.Endpoint, &row.PromptTokens, &row.CompletionTokens,
+			&row.Cost, &row.Status, &row.Tokens,
+		); err != nil {
+			return nil, fmt.Errorf("scan usageHistory since %s: %w", cutoff, err)
+		}
+		res = append(res, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate usageHistory since %s: %w", cutoff, err)
+	}
+	return res, nil
+}
+
+// GetUsageHistoryWatermark returns the timestamp of the newest usageHistory row.
+// It rides idx_uh_ts as a covering-index seek, so it stays O(log n) no matter
+// how large the table grows — that is what makes a cached aggregate safe to
+// refresh from a delta instead of re-reading the whole window.
+func (r *Repo) GetUsageHistoryWatermark() (string, error) {
+	var ts string
+	if err := r.db.QueryRow(`SELECT COALESCE(MAX(timestamp), '') FROM usageHistory`).Scan(&ts); err != nil {
+		return "", fmt.Errorf("read usageHistory watermark: %w", err)
+	}
+	return ts, nil
+}
+
+// GetUsageHistoryBetween returns rows in (since, until] — the delta a cached
+// window aggregate has yet to fold in. The bounds are exclusive on the low end
+// so a row already folded in at the watermark is never counted twice.
+func (r *Repo) GetUsageHistoryBetween(since, until string) ([]UsageHistoryRow, error) {
+	rows, err := r.db.Query(usageHistoryBetweenQuery, since, until)
+	if err != nil {
+		return nil, fmt.Errorf("query usageHistory between %s and %s: %w", since, until, err)
+	}
+	defer rows.Close()
+
+	var res []UsageHistoryRow
+	for rows.Next() {
+		var row UsageHistoryRow
+		if err := rows.Scan(&row.Timestamp, &row.Provider, &row.Model, &row.ConnectionID,
+			&row.APIKey, &row.Endpoint, &row.PromptTokens, &row.CompletionTokens,
+			&row.Cost, &row.Status, &row.Tokens); err != nil {
+			return nil, fmt.Errorf("scan usageHistory between %s and %s: %w", since, until, err)
+		}
+		res = append(res, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate usageHistory between %s and %s: %w", since, until, err)
+	}
+	return res, nil
+}
+
+// GetRecentUsageHistory returns the latest N usage history records.
+func (r *Repo) GetRecentUsageHistory(limit int) ([]UsageHistoryRow, error) {
+	rows, err := r.db.Query(usageHistoryRecentQuery, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query recent usageHistory: %w", err)
+	}
+	defer rows.Close()
+
+	var res []UsageHistoryRow
+	for rows.Next() {
+		var row UsageHistoryRow
+		if err := rows.Scan(
+			&row.Timestamp, &row.Provider, &row.Model, &row.ConnectionID,
+			&row.APIKey, &row.Endpoint, &row.PromptTokens, &row.CompletionTokens,
+			&row.Cost, &row.Status, &row.Tokens,
+		); err != nil {
+			return nil, fmt.Errorf("scan recent usageHistory: %w", err)
+		}
+		res = append(res, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate recent usageHistory: %w", err)
+	}
+	return res, nil
+}
+
+// RequestDetailListRow is one row of the Details table: every value the table
+// renders, and nothing else.
+//
+// The stored payload also carries the request messages and the response body —
+// up to MaxLoggedMessages × MaxMessageContentLen plus MaxResponseContentLen
+// characters, which measured ~20 KB per row. A page of 20 is 400 KB that the
+// table never reads: it shows timestamps, provider, model, latency and token
+// counts, and only the View action wants the text. So the list query selects
+// those values out of the JSON and the payload stays behind
+// GetRequestDetailByID until a row is actually opened.
+type RequestDetailListRow struct {
+	ID           string
+	Timestamp    string
+	Provider     string
+	Model        string
+	ConnectionID string
+	Status       string
+	LatencyTTFT  int64
+	LatencyTotal int64
+	TokensJSON   string
+	Account      string
+	Cost         float64
+	Combo        string
+	Protocol     string
+	LoopWarning  string
+}
+
+// requestDetailListSelect pulls the renderable values straight out of the
+// stored JSON. The key paths mirror what internal/handlers/chat writes into
+// `latency` and `tokens`; json_extract returns NULL for a path a given row does
+// not carry, which COALESCE folds to the zero the table already renders for
+// "not reported".
+const requestDetailListSelect = `
+	SELECT id, timestamp, COALESCE(provider, ''), COALESCE(model, ''), COALESCE(connectionId, ''),
+	       COALESCE(status, ''),
+	       COALESCE(json_extract(data, '$.latency.ttft'), 0),
+	       COALESCE(json_extract(data, '$.latency.total'), 0),
+	       COALESCE(json_extract(data, '$.tokens'), '{}'),
+	       COALESCE(json_extract(data, '$.account'), ''),
+	       COALESCE(json_extract(data, '$.cost'), 0.0),
+	       COALESCE(json_extract(data, '$.combo'), ''),
+	       COALESCE(json_extract(data, '$.protocol'), ''),
+	       COALESCE(json_extract(data, '$.loopWarning'), COALESCE(json_extract(data, '$.anomalies[0].message'), '')),
+	       json_valid(data)
+	FROM requestDetails
+	%s
+	ORDER BY timestamp DESC
+	LIMIT ? OFFSET ?`
+
+// requestDetailCount counts exactly the rows requestDetailListSelect would page.
+// The two share the predicate slot so a windowed page can never report a total
+// gathered from outside its window.
+const requestDetailCount = `SELECT COUNT(*) FROM requestDetails %s`
+
+// GetRequestDetailsPaged returns one page of collapsed detail rows and the
+// total number of recorded requests.
+//
+// since is the optional timestamp floor behind ?period on the Details tab; an
+// empty string reads the whole table.
+//
+// The count is not allowed to fail quietly. Reporting 0 next to a page that
+// does carry rows is the same "zero that means broken" class this reader's
+// siblings were fixed for, and it reaches the caller looking like a coherent
+// empty page.
+func (r *Repo) GetRequestDetailsPaged(ctx context.Context, limit, offset int, since string) ([]RequestDetailListRow, int, error) {
+	where := ""
+	var args []any
+	if since != "" {
+		where = "WHERE timestamp >= ?"
+		args = append(args, since)
+	}
+	var total int
+	if err := r.db.QueryRowContext(ctx, fmt.Sprintf(requestDetailCount, where), args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count requestDetails: %w", err)
+	}
+
+	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(requestDetailListSelect, where), append(args, limit, offset)...)
+	if err != nil {
+		return nil, total, fmt.Errorf("query requestDetails paged: %w", err)
+	}
+	defer rows.Close()
+
+	res := make([]RequestDetailListRow, 0, limit)
+	for rows.Next() {
+		var row RequestDetailListRow
+		var dataValid int
+		if err := rows.Scan(&row.ID, &row.Timestamp, &row.Provider, &row.Model,
+			&row.ConnectionID, &row.Status, &row.LatencyTTFT, &row.LatencyTotal, &row.TokensJSON,
+			&row.Account, &row.Cost, &row.Combo, &row.Protocol,
+			&row.LoopWarning,
+			&dataValid); err != nil {
+			return nil, total, fmt.Errorf("scan requestDetails: %w", err)
+		}
+		// A stored `data` that is NULL or not JSON is a broken read, not an
+		// empty row. The raw-column query this replaced surfaced that as a scan
+		// error; json_extract alone would fold it to the COALESCE defaults above
+		// and render the row as a request with zero tokens and no payload, which
+		// reads as real data. json_valid separates the two cases in the same pass.
+		if dataValid != 1 {
+			return nil, total, fmt.Errorf("requestDetails %s has an unreadable data column", row.ID)
+		}
+		res = append(res, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, total, fmt.Errorf("iterate requestDetails paged: %w", err)
+	}
+	return res, total, nil
+}
+
+// GetRequestDetailByID returns the full stored payload for one request, which
+// is what the inspector shows. It is a primary-key lookup, so opening a row
+// costs the same whether the table holds ten rows or ten million.
+func (r *Repo) GetRequestDetailByID(id string) (string, error) {
+	if id == "" {
+		return "", fmt.Errorf("get request detail: empty id")
+	}
+	var data string
+	if err := r.db.QueryRow(`SELECT data FROM requestDetails WHERE id = ?`, id).Scan(&data); err != nil {
+		return "", fmt.Errorf("get request detail %s: %w", id, err)
+	}
+	return data, nil
+}
+
+// GetRequestDetailsErrorCountSince returns the count of failed requests recorded in requestDetails since cutoff.
+func (r *Repo) GetRequestDetailsErrorCountSince(ctx context.Context, since string) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM requestDetails WHERE status = 'error' AND timestamp >= ?`, since).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count requestDetails errors since %s: %w", since, err)
+	}
+	return count, nil
+}
+
+// ProviderHourlyErrorRate represents aggregated error statistics for one provider in an hour.
+type ProviderHourlyErrorRate struct {
+	Hour      string  `json:"hour"`
+	Provider  string  `json:"provider"`
+	Total     int     `json:"total"`
+	Errors    int     `json:"errors"`
+	ErrorRate float64 `json:"errorRate"`
+}
+
+// GetProviderHourlyErrorRates aggregates request volume and error rates per provider per hour (port(serenhope) TASK-3.4).
+func (r *Repo) GetProviderHourlyErrorRates(ctx context.Context, since string) ([]ProviderHourlyErrorRate, error) {
+	if since == "" {
+		since = time.Now().UTC().Add(-24 * time.Hour).Format("2006-01-02 15:04:05")
+	}
+	query := `
+		SELECT
+			COALESCE(strftime('%Y-%m-%d %H:00:00', timestamp), '') AS hr,
+			COALESCE(provider, 'unknown') AS prov,
+			COUNT(1) AS tot,
+			SUM(CASE WHEN status = 'error' OR status != 'success' THEN 1 ELSE 0 END) AS errs
+		FROM (
+			SELECT timestamp, provider, status FROM usageHistory WHERE timestamp >= ?
+			UNION ALL
+			SELECT timestamp, provider, status FROM requestDetails WHERE status = 'error' AND timestamp >= ?
+		)
+		GROUP BY hr, prov
+		ORDER BY hr DESC, prov ASC`
+
+	rows, err := r.db.QueryContext(ctx, query, since, since)
+	if err != nil {
+		return nil, fmt.Errorf("aggregate provider hourly error rates: %w", err)
+	}
+	defer rows.Close()
+
+	var results []ProviderHourlyErrorRate
+	for rows.Next() {
+		var rRate ProviderHourlyErrorRate
+		if err := rows.Scan(&rRate.Hour, &rRate.Provider, &rRate.Total, &rRate.Errors); err != nil {
+			return nil, fmt.Errorf("scan provider hourly error rate: %w", err)
+		}
+		if rRate.Total > 0 {
+			rRate.ErrorRate = float64(rRate.Errors) / float64(rRate.Total)
+		}
+		results = append(results, rRate)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate provider hourly error rates: %w", err)
+	}
+	return results, nil
+}

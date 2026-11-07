@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    /* via shadcn-svelte (MIT): $lib alias required by the shadcn-svelte Vite install.
+       TS 6 deprecates baseUrl — paths resolve relative to this tsconfig. */
+    "paths": {
+      "$lib": ["./src/lib"],
+      "$lib/*": ["./src/lib/*"]
+    }
+  },
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
