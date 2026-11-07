@@ -4,8 +4,8 @@ All notable changes to **9RouterX** are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Release history up to the fork point is archived at
-[`docs/changelog/9router-go-legacy.md`](docs/changelog/9router-go-legacy.md).
+Release history up to the fork point is archived in the upstream repo's
+[CHANGELOG.md](https://github.com/luqman-v1/9router-go/blob/main/CHANGELOG.md).
 
 ## [Unreleased]
 

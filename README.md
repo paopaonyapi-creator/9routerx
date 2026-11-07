@@ -2,9 +2,9 @@
 
 # 9RouterX — FREE AI Router & Token Saver (Single Binary)
 
-**Never stop coding. Save 20-40% tokens with RTK + auto-fallback to FREE & cheap AI models.**
+**A local AI gateway and LLM router in one Go binary: connect Claude Code, Codex, Cursor, Antigravity, Gemini, OpenCode, Cline, OpenClaw... to 40+ AI providers & 100+ models — with automatic fallback across subscription, cheap and free tiers, per-key governance, and a token-saver suite that cuts tool-output tokens by 20-40%. No Node.js needed at runtime.**
 
-**Connect Claude Code, Cursor, Antigravity, Codex, Gemini, OpenCode, Cline, OpenClaw... to 40+ AI providers & 100+ models — no Node.js needed at runtime.**
+**Never stop coding. Route smarter, spend less.**
 
 [![CI](https://github.com/yanstd888/9routerx/actions/workflows/ci.yml/badge.svg)](https://github.com/yanstd888/9routerx/actions/workflows/ci.yml)
 [![Release](https://github.com/yanstd888/9routerx/actions/workflows/release.yml/badge.svg)](https://github.com/yanstd888/9routerx/actions/workflows/release.yml)
@@ -14,7 +14,7 @@
 [![Telegram](https://img.shields.io/badge/Telegram-Join%20Group-26A5E1?logo=telegram&logoColor=white)](https://yanstd888.github.io/9routerx/tg)
 [![Source port](https://img.shields.io/badge/source_port-yanstd888-8b4a3a)](https://github.com/yanstd888/9routerx)
 
-[🚀 Quick Start](#-quick-start) • [💡 Features](#-key-features) • [⚙️ Setup](#-setup-guide) • [🔄 Share DB with 9Router](#-sharing-a-database-with-9router) • [🌐 Upstream](https://github.com/decolua/9router)
+[🚀 Quick Start](#-quick-start) • [💡 Features](#-key-features) • [⚙️ Setup](#-setup-guide) • [🔄 Share DB with 9Router](#-sharing-a-database-with-9router) • [📖 Wiki](https://yanstd888.github.io/9routerx/) • [🌐 Upstream](https://github.com/decolua/9router)
 
 </div>
 
@@ -22,7 +22,7 @@
 
 ## 🤔 Why 9RouterX?
 
-Same idea as [9Router](https://github.com/decolua/9router), minus the Node.js runtime: **one Go binary** serves the proxy APIs + an embedded Svelte dashboard.
+Same idea as [9Router](https://github.com/decolua/9router), minus the Node.js runtime: **one Go binary** serves the proxy APIs + an embedded Svelte 5 dashboard.
 
 **Stop wasting money, tokens and hitting limits:**
 
@@ -43,6 +43,21 @@ Same idea as [9Router](https://github.com/decolua/9router), minus the Node.js ru
 - ✅ **Custom usage ranges** — analyze any window (`14d`, `12h`), not just fixed presets
 - ✅ **Extended logging** — live console log with level filters & search, plus per-request payload inspector
 - ✅ **Single binary** — Go + embedded dashboard, works with Claude Code, Codex, Cursor, Cline, any CLI tool
+
+---
+
+## 🧭 What's different from 9Router / 9router-go?
+
+9RouterX is a fork of [9router-go](https://github.com/luqman-v1/9router-go) (luqman-v1), which is itself a Go port of [9Router](https://github.com/decolua/9router) — full credit and attribution live in [Credits](#credits) and [ATTRIBUTION.md](ATTRIBUTION.md). On top of that lineage, 9RouterX adds:
+
+- **Single Go binary, zero runtime deps** — proxy APIs + Svelte 5 dashboard embedded in one executable; no Node.js process to keep alive.
+- **Per-key governance** — daily cost ceilings with hard cutoff, request limits, IP whitelists, per-key system prompts, endpoint permissions, and reusable plan templates you can stamp onto many keys.
+- **The full token-saver suite** — beyond RTK compression: anti-slop injector, context squeezer, tool-call repair fallback, JSON guard, per-tool output filters, and the Caveman & Ponytail output styles.
+- **New routing strategies** — cache-optimized, auto, quota-weighted, and reset-aware combo routing, plus a 3-tier circuit breaker across subscription, cheap, and free tiers.
+- **Semantic cache + prompt cache** — repeated identical requests are served from cache, cutting cost and latency for multi-agent loops and CLI repetition.
+- **MCP server + A2A endpoints** — wire agentic tooling (IDE assistants, agent-to-agent clients) straight into the gateway.
+- **Security log + hardening** — per-event security log with alerting, SSRF guard with PII masking, TLS stealth, and audit log v2.
+- **Indonesian & English dashboard** — built for the [t.me/aiclub_id](https://t.me/aiclub_id) community first, with a desktop tray companion and a one-command Cloudflare tunnel for remote access.
 
 ---
 
@@ -170,31 +185,54 @@ docker run -d --name 9routerx --restart unless-stopped \
 
 ## 💡 Key Features
 
-- 🖥️ Native Svelte 5 dashboard: providers, OAuth, combos, proxy pools, API keys, usage, quota, settings, plans, per-entry sidebar visibility
-- 💱 Cost display in USD, IDR, EUR and ten more currencies — editable rate table, dual display, one-click refresh from a public provider
-- 🔌 OpenAI Chat, Claude Messages, Gemini, Ollama-compatible, Responses, embeddings, media, search, web tools
-- 🔁 Combos with fallback, round-robin, sticky routing, fusion, capability-aware reordering
-- 👥 Per-provider executors, OAuth refresh, reactive 401 retry
-- 📡 Live usage + console-log SSE streams, stall detection
-- 💾 SQLite WAL persistence, outbound proxy support, self-update, MITM commands, Docker, cross-compilation
+**Cost & token savings**
 
-For sequential combo routing, set **Model response timeout** in seconds (decimals
-such as `5.3` are fine) in the combo's Edit dialog, or from the compact field on the
-combo card. Empty or `0` disables it. The timer covers each model
-candidate except the last, including connection selection and waiting for a
-usable response. If it expires before output is committed, the router cancels
-that candidate and tries the next. The last candidate keeps the gateway's
-normal deadline, so the setting never makes a combo fail sooner than it would
-without it (#744). An active stream is not cut off by this setting. For
-non-streaming requests, the timer covers the wait for the complete response.
-Fusion panel timing is separate. A model that times out is left out of that
-combo for a
-grace period (default 5 minutes, set per combo under the timeout in the Edit
-dialog; `0` re-includes it on the next request) and then rejoins the chain. If
-every model in the chain is inside its grace period, the full chain is used. The
-pause is held in memory and resets on restart. Stored as
-`firstTokenGraceMs` next to the timeout. The dashboard shows seconds; the setting is stored in
-milliseconds as `comboStrategies[comboName].firstTokenTimeoutMs`.
+- 🗜️ **RTK input compression** — auto-compress `tool_result` content (git diffs, grep output, file listings) before it reaches the model; 20-40% fewer tokens on agentic workloads.
+- 🧹 **Anti-slop injector** — strips the filler phrases and sycophantic patterns that inflate every response.
+- ✂️ **Context squeezer** — older conversation turns are elided with an honest marker to fit a model's context window, keeping the most recent turns verbatim.
+- 🔧 **Tool-call repair fallback** — malformed tool arguments are repaired, truncated JSON is closed, and orphaned tool results are dropped before they become an upstream 400.
+- 🛡️ **JSON guard** — non-finite numbers and JSON-shaped hazards are sanitized on every lane.
+- 🪠 **Per-tool output filters** — 50+ ready-made filters for `git diff`, `grep`, `docker logs`, `npm install`, `terraform plan`, and friends, so one noisy tool doesn't tax every turn.
+- 🗿 **Output styles** — Caveman and Ponytail directive modes re-shape compressed output for even heavier savings.
+- 🧠 **Semantic cache + prompt cache** — identical requests are served from cache instead of the provider: repeated multi-agent probes and CLI re-runs stop paying twice. Semantic hits are attributed in usage analytics; the prompt cache is a bounded LRU keyed on the exact prompt.
+- 📦 **GCF compression** — dashboard assets ship pre-compressed (`.br`/`.gz`) for a fast first paint.
+
+**Governance & security**
+
+- 🎛️ **Per-key governance** — daily cost ceiling (USD per UTC day) with optional hard cutoff, request limits with reset windows, RPM/TPM/concurrency caps, and alert thresholds — enforced per API key, not per server.
+- 🧾 **Plan templates** — bundle limits into a reusable plan and stamp it across many keys; key-level overrides win.
+- 🔒 **IP whitelist per key** — a key only works from the addresses (IP/CIDR list) you allow.
+- 🧩 **Per-key system prompt & endpoint permissions** — inject a system prompt per key in the client's wire format, and restrict which endpoint families (chat, embeddings, images, ...) a key may call.
+- 🚨 **Security event log** — per-event security log with alerting on suspicious patterns, plus a compliance-grade audit log v2.
+- 🧱 **SSRF guard + PII masking** — outbound dialing and inbound payloads are guarded; private-network escapes are opt-in flags.
+- ⚡ **3-tier circuit breaker** — per-provider breaker + per-account semaphore across the subscription → cheap → free chain: dead accounts stop receiving traffic on evidence, not on hope.
+- 🕵️ **TLS stealth** — hardened TLS fingerprint handling for providers that grade their clients.
+
+**Integrations**
+
+- 🤖 **MCP server** — Model Context Protocol over stdio (IDE integrations) and HTTP POST (remote callers), with a scoped auth token: browse providers, read usage, and run operator actions from your agent.
+- 🔗 **A2A endpoints** — Agent-to-Agent protocol surface (agent card + `message/send`, `tasks/*`) so other agents can consume the gateway directly.
+- 📲 **Telegram notifications + multi-target webhooks** — push gateway events to Telegram and to any operator-configured webhook fleet.
+- 🔔 **Notification feed** — condition scanners watch system and key health and write a dashboard feed, with fan-out to the webhook targets.
+- 👥 **Teams billing** — multi-seat team plans with shared budgets.
+- 💾 **Config bundle import/export** — move a whole configuration between installs as an encrypted bundle (AES-256-GCM under `ROUTER_MASTER_KEY`).
+- 🖥️ **Tray companion** — `9routerx-tray` puts start/stop/status in the menu bar on Windows, macOS, and Linux.
+- 🌍 **Cloudflare tunnel** — one command exposes the dashboard through a named cloudflared tunnel, no port-forwarding dance.
+- 🌐 **Web executors** — optional browser-session executors (ChatGPT web, Gemini web with background session renewal) for accounts that only exist in a browser.
+- 🇮🇩 **Indonesian & English dashboard** — full i18n for both languages (Bahasa Indonesia dan Inggris), switchable in settings.
+
+**Ops & reliability**
+
+- 📊 **Usage analytics** — live SSE usage + console-log streams, cost display in USD/IDR/EUR and ten more currencies (editable rate table), custom analysis windows, and cache-hit attribution.
+- 🩺 **Model health + scheduled auto-ping** — models you actually use are probed automatically, consecutive failures are counted, and dead models drop out of routing; scheduled pings keep idle connections warm.
+- 📶 **Uptime heartbeat** — push a heartbeat to Uptime Kuma (or any Push-Monitor-compatible endpoint) so you learn about downtime from your monitor, not from a CLI tool that stopped answering.
+- 🔢 **Codex quota tracking** — watch Codex quota consumption and reset-credit windows from the dashboard.
+- 💽 **Backup/restore** — database backups and restores are dashboard features, not shell rituals.
+- ⌨️ **Command palette + bulk operations** — every dashboard action reachable from a palette; bulk-add providers, keys, and models instead of clicking through one-by-one.
+- 🆓 **Free-tier catalog + custom credits** — browse a built-in free-tier provider catalog and track custom credit balances per account.
+- 🔁 **Routing strategies** — per-combo fallback, round-robin, sticky, capacity, fusion, plus cache-optimized, auto, quota-weighted, and reset-aware strategies.
+- ⏱️ **Per-combo response timeout & grace period** — a model that hangs is skipped and briefly benched; see the [wiki's combos page](https://yanstd888.github.io/9routerx/combos.html) for the details.
+- 💿 **SQLite WAL persistence** — single-file storage with WAL concurrency, outbound proxy support, self-update, MITM commands, Docker, and cross-compilation.
 
 ---
 
@@ -241,9 +279,20 @@ Full schema, operator contract, and multi-process limits: [`DATABASE.md`](DATABA
 
 ## 📸 Screenshots
 
-![9RouterX dashboard — Providers view](docs/screenshots/providers.png)
+Every screen ships in dark and light themes, at desktop and mobile widths. The
+full gallery — with per-page commentary — lives on the wiki's
+[**Screenshots**](https://yanstd888.github.io/9routerx/screenshots.html) page.
 
-![9RouterX dashboard — Endpoint & API key setup](docs/screenshots/endpoint.png)
+| | Dark | Light |
+|---|---|---|
+| **Providers** — connect AI providers and manage custom OpenAI/Anthropic-compatible endpoints | ![Providers view, dark theme — the provider catalog and connection list in the 9RouterX dashboard](docs/screenshots/providers.png) | ![Providers view, light theme — the same provider catalog and connection list in light mode](docs/screenshots/providers-light.png) |
+| **Endpoint & API keys** — the OpenAI-compatible endpoint your CLI tools point at, and the keys they authenticate with | ![Endpoint and API keys page, dark theme — base URL, model aliases, and client key management](docs/screenshots/endpoint-keys.png) | ![Endpoint and API keys page, light theme — the same endpoint and key setup in light mode](docs/screenshots/endpoint-light.png) |
+| **Usage overview** — live cost, tokens, and per-provider breakdown | ![Usage overview, dark theme — cost and token charts across providers and models](docs/screenshots/usage-overview.png) | ![Usage overview, light theme — cost and token charts across providers and models](docs/screenshots/usage-overview-light.png) |
+| **Request logs** — per-request payload inspector and live console | ![Request logs page, dark theme — per-request status, latency, and payload inspector](docs/screenshots/request-logs.png) | ![Request logs page, light theme — per-request status, latency, and payload inspector](docs/screenshots/request-logs-light.png) |
+
+Mobile layouts reflow the same pages behind a navigation sheet — see
+[`docs/screenshots/`](docs/screenshots) for the full set, including
+`*-mobile.png` (dark) and `*-mobile-light.png` (light) variants of every page.
 
 ---
 
@@ -394,8 +443,8 @@ them as a button.**
    macOS, the profile's "Local State" file on Windows), and unseals the
    cookies. **A browser that is still open keeps rotating the same session**
    and the router renews it from the other side, and the two cancel each
-   out — which signs the account out. Close the browser first, or use the
-   throwaway browser above. The dashboard says so when it finds a browser
+   other out — which signs the account out. Close the browser first, or use
+   the throwaway browser above. The dashboard says so when it finds a browser
    that is running.
 3. *A cookie you paste* — the fallback. Copy the cookie header from an
    Incognito window that you close right after, not from a normal tab, and
@@ -453,13 +502,31 @@ Go reads/writes the upstream 9router table/JSON shapes and bootstraps the core s
 
 ---
 
+## ❓ FAQ
+
+**Is 9RouterX really free?**
+Yes — MIT-licensed and free to run. The gateway itself costs nothing; you bring your own provider accounts, and its whole design pushes traffic toward the free and cheap tiers (the free-tier catalog, the circuit breaker, and per-key budget ceilings all serve that goal).
+
+**Does it work with Claude Code, Codex, Cursor, or Cline?**
+Yes — anything that speaks the OpenAI Chat Completions API, the Claude Messages API, the Responses API, or Ollama-compatible chat points at `http://localhost:888/v1` with an API key minted in the dashboard. The wiki's [client setup page](https://yanstd888.github.io/9routerx/client-setup.html) has per-tool snippets.
+
+**How is this different from running Ollama?**
+Ollama serves local models. 9RouterX is a router in front of cloud and subscription providers — it fails over between your subscription quota, cheap paid models, and free tiers, and adds token compression, caching, and per-key governance on top. The two compose fine: an Ollama endpoint can be one of the providers.
+
+**Do I have to migrate my data from 9Router?**
+No. Point 9routerx at the same `DATA_DIR` and it opens the same SQLite database — providers, combos, keys, and history carry over as-is. See [Sharing a database with 9Router](#-sharing-a-database-with-9router).
+
+**Can I limit what a shared API key can do?**
+Yes — that is the per-key governance suite: daily cost ceilings with hard cutoff, request limits, IP whitelists, per-key system prompts, and endpoint permissions, optionally templated via plans and stamped across many keys.
+
+---
+
 ## 🤝 Contributing
 
 Issues and pull requests use templates, so pick the right one rather than opening a blank report:
 
 - **Bug report** — something behaves incorrectly. Include a reproduction, `9routerx version`, OS, and the log excerpt around the failure.
 - **Feature request** — the problem you cannot solve today, the surface it touches, and whether upstream already has it.
-- **Upstream parity** — a behaviour `decolua/9router` has and this gateway does not; link the upstream commit or PR.
 - **Question** — configuration and usage help.
 
 PRs follow the checks CI runs: `go vet ./...`, `go test -count=1 ./...`, `make test-integration`, plus `cd web && bun test` and `make vet-svelte` for anything touching the dashboard. Before writing code, skim [`AGENTS.md`](AGENTS.md) — provider isolation and the Go/Svelte conventions there are enforced by review.
@@ -468,13 +535,13 @@ Everyone whose commit landed in the repository is credited on the wiki's [**Owne
 
 ## 📚 Docs
 
-**Full documentation, searchable:** [**9routerx Wiki**](https://yanstd888.github.io/9routerx/) — installation, usage, API reference, dashboard, providers, architecture, database, CLI, and a screenshot gallery. Every page supports `?q=` search and `#section` deep links.
+**Full documentation, searchable:** [**9routerx Wiki**](https://yanstd888.github.io/9routerx/) — installation, usage, API reference, dashboard, providers, governance, architecture, database, CLI, and a screenshot gallery. Every page supports `?q=` search and `#section` deep links.
 
 Repository references:
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — routing, providers, runtime layout
 - [`DATABASE.md`](DATABASE.md) — SQLite schema & operator contract
-- [`CHANGELOG.md`](CHANGELOG.md) — release history (Go **v1.9.15**, upstream baseline `decolua/9router`). Work merged since the last tag lives in `.changes/` fragments and is folded in at the next release; the dashboard's changelog modal shows both. Check what you are running with `9routerx version`.
+- [`CHANGELOG.md`](CHANGELOG.md) — release history. Work merged since the last tag lives in `.changes/` fragments and is folded in at the next release; the dashboard's changelog modal shows both. Check what you are running with `9routerx version`.
 - [`docs/TELEGRAM_RELEASE_NOTIFICATIONS.md`](docs/TELEGRAM_RELEASE_NOTIFICATIONS.md) — one-time setup for the release notice posted to Telegram
 
 ## Credits
@@ -486,7 +553,7 @@ Repository references:
 
 ## 📄 License
 
-MIT License — lihat [`LICENSE`](https://github.com/yanstd888/9routerx/blob/main/LICENSE).
+MIT License — see [`LICENSE`](https://github.com/yanstd888/9routerx/blob/main/LICENSE).
 
 ---
 

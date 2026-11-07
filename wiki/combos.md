@@ -107,12 +107,25 @@ the cap; `capped` tells you the cap bit.
 ## Timeout and grace period
 
 Set **Model response timeout** per combo in the Edit dialog (seconds, decimals
-allowed; empty or `0` disables). The timer covers each candidate except the last.
+such as `5.3` are allowed; empty or `0` disables), or from the compact field on
+the combo card. The timer covers each model candidate except the last,
+**including connection selection and waiting for a usable response**. The last
+candidate keeps the gateway's normal deadline, so the setting never makes a
+combo fail sooner than it would without it (#744). An active stream is not cut
+off by this setting; for non-streaming requests the timer covers the wait for
+the complete response.
+
 When it fires, the candidate is cancelled and the next is tried; the timed-out
 model is then left out of that combo for a grace period — default 5 minutes,
-`0` re-includes it immediately — before rejoining the chain. If every model is
-inside its grace period, the full chain is used. The pause is in-memory and
-resets on restart.
+set per combo under the timeout in the Edit dialog, `0` re-includes it on the
+next request — before rejoining the chain. Fusion panel timing is separate: a
+model that times out there is benched by the same grace logic, and if every
+model in the chain is inside its grace period, the full chain is used. The
+pause is held in memory and resets on restart.
+
+**Where the value is stored:** the dashboard shows seconds; the setting is
+stored in milliseconds as `comboStrategies[comboName].firstTokenTimeoutMs`,
+with the grace period next to it as `firstTokenGraceMs`.
 
 ## Where it lives
 
