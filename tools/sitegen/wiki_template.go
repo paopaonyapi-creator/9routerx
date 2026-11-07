@@ -768,7 +768,7 @@ const wikiTemplate = `<!doctype html>
             for (var j = 0; j < p.headings.length; j++) {
               var h = p.headings[j];
               if (h.text.toLowerCase().indexOf(q) !== -1) {
-                hits.push({ slug: p.slug, title: h.text, where: p.title });
+                hits.push({ slug: p.slug, title: h.text, where: p.title, anchor: h.anchor });
               }
             }
             // A term that lives only in a paragraph still deserves a hit: it
@@ -788,7 +788,12 @@ const wikiTemplate = `<!doctype html>
           results.innerHTML = hits
             .slice(0, 12)
             .map(function (h) {
-              var anchor = h.where === "Page" ? "" : "#" + anchorOf(h.title);
+              // The index carries the id goldmark actually published. Deriving
+              // one from the heading text here disagrees with goldmark on any
+              // heading holding punctuation — "RTK — request-side compression"
+              // indexes as rtk--request-... but a local slugify produced
+              // rtk-request-..., so the hit landed at the top of the page.
+              var anchor = h.where === "Page" || !h.anchor ? "" : "#" + h.anchor;
               return (
                 '<li><a href="' + h.slug + '.html' + anchor + '">' +
                 escapeHTML(h.title) +
@@ -796,13 +801,6 @@ const wikiTemplate = `<!doctype html>
               );
             })
             .join("");
-        }
-
-        function anchorOf(text) {
-          return text
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-+|-+$/g, "");
         }
 
         function escapeHTML(s) {

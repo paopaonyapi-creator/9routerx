@@ -31,28 +31,49 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org/
+      # Secrets cannot be referenced from an `if` condition — GitHub rejects the
+      # whole workflow file at load time ("Unrecognized named-value: 'secrets'",
+      # which turned every push into a 0-second run with no jobs). Publish-ability
+      # is therefore probed here, where an `env:` block may read secrets, and the
+      # publish steps below gate on this output instead.
+      - name: Check npm credentials
+        id: creds
+        run: |
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "NODE_AUTH_TOKEN not configured; packages are assembled but not published."
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
       - name: Download release binary for this platform
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
           gh release download "${GITHUB_REF_NAME}" --pattern "9routerx-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}*" --clobber
           ls -la
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Assemble platform package
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          # Exported so the node script reads it from process.env, and stripped
+          # of the v prefix because npm rejects the prefixed spelling as a
+          # package version.
+          export VERSION="${GITHUB_REF_NAME#v}"
           PKGDIR="pkg/@9routerx/${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
           mkdir -p "${PKGDIR}/bin"
           BIN="9routerx${{ matrix.ext }}"
-          [ "${{ matrix.ext }}" != ".exe" ] && chmod +x "9routerx-${{ matrix.os }}-${{ matrix.arch }}" && cp "9routerx-${{ matrix.os }}-${{ matrix.arch }}" "${PKGDIR}/bin/${BIN}" || cp "9routerx-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" "${PKGDIR}/bin/${BIN}"
+          if [ "${{ matrix.ext }}" != ".exe" ]; then
+            chmod +x "9routerx-${{ matrix.os }}-${{ matrix.arch }}"
+            cp "9routerx-${{ matrix.os }}-${{ matrix.arch }}" "${PKGDIR}/bin/${BIN}"
+          else
+            cp "9routerx-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" "${PKGDIR}/bin/${BIN}"
+          fi
           node -e "
             const p = { name: '@9routerx/${{ matrix.npm_os }}-${{ matrix.npm_arch }}', version: process.env.VERSION, description: '9RouterX binary (${{ matrix.os }}/${{ matrix.arch }})', os: ['${{ matrix.npm_os }}'], cpu: ['${{ matrix.npm_arch }}'], license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', files: ['bin'], publishConfig: { access: 'public' } };
             require('fs').writeFileSync('${PKGDIR}/package.json', JSON.stringify(p, null, 2));
           "
-        env:
-          VERSION: ${{ github.ref_name }}
       - name: Publish platform package
-        if: ${{ secrets.NODE_AUTH_TOKEN != '' }}
+        if: steps.creds.outputs.publish == 'true'
         run: |
           cd "pkg/@9routerx/${{ matrix.npm_os }}-${{ matrix.npm_arch }}"
           npm publish --dry-run
@@ -70,13 +91,29 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org/
-      - name: Assemble + publish main wrapper package
-        if: ${{ secrets.NODE_AUTH_TOKEN != '' }}
+      - name: Check npm credentials
+        id: creds
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "NODE_AUTH_TOKEN not configured; the wrapper is assembled but not published."
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+      - name: Assemble + publish main wrapper package
+        if: steps.creds.outputs.publish == 'true'
+        run: |
+          # Exported so the node script reads it from process.env, and stripped
+          # of the v prefix because npm rejects the prefixed spelling as a
+          # package version. Every optionalDependencies entry goes through
+          # process.env.VERSION — a bare VERSION identifier here would be a
+          # ReferenceError in node, not a version string.
+          export VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p pkg/9routerx/bin
           node -e "
-            const p = { name: '9routerx', version: process.env.VERSION, description: '9RouterX — 9R Next Go Generation: local AI gateway (installs the right platform binary)', bin: { 9routerx: 'bin/launcher.js' }, optionalDependencies: { '@9routerx/win32-x64': process.env.VERSION, '@9routerx/linux-x64': process.env.VERSION, '@9routerx/linux-arm64': VERSION, '@9routerx/darwin-x64': VERSION, '@9routerx/darwin-arm64': VERSION }, license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', keywords: ['ai','gateway','router','llm','proxy'], engines: { node: '>=18' }, publishConfig: { access: 'public' } };
+            const p = { name: '9routerx', version: process.env.VERSION, description: '9RouterX — 9R Next Go Generation: local AI gateway (installs the right platform binary)', bin: { 9routerx: 'bin/launcher.js' }, optionalDependencies: { '@9routerx/win32-x64': process.env.VERSION, '@9routerx/linux-x64': process.env.VERSION, '@9routerx/linux-arm64': process.env.VERSION, '@9routerx/darwin-x64': process.env.VERSION, '@9routerx/darwin-arm64': process.env.VERSION }, license: 'MIT', repository: { type: 'git', url: 'git+https://github.com/yanstd888/9routerx.git' }, author: 'Muhammad Dian (yanstd888)', keywords: ['ai','gateway','router','llm','proxy'], engines: { node: '>=18' }, publishConfig: { access: 'public' } };
             require('fs').writeFileSync('pkg/9routerx/package.json', JSON.stringify(p, null, 2));
             const fs = require('fs');
             fs.writeFileSync('pkg/9routerx/bin/launcher.js', [

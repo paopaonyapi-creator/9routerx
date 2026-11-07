@@ -132,12 +132,12 @@ describe('Collapsible groups', () => {
     const advanced = page.locator('nav button:has-text("ADVANCED FEATURES")')
     await advanced.waitFor({ timeout: 10_000 })
     expect(await advanced.getAttribute('aria-expanded')).toBe('true')
-    expect(await page.locator('nav a:has-text("Security")').count()).toBe(1)
+    expect(await page.locator('nav a span:text-is("Security")').count()).toBe(1)
 
     await advanced.click()
     await page.waitForTimeout(500)
     expect(await advanced.getAttribute('aria-expanded')).toBe('false')
-    expect(await page.locator('nav a:has-text("Security")').count()).toBe(0)
+    expect(await page.locator('nav a span:text-is("Security")').count()).toBe(0)
 
     // The fold survives a reload, because the sidebar is the surface the
     // operator arranges rather than a dialog they dismiss.
@@ -150,7 +150,7 @@ describe('Collapsible groups', () => {
     await page.goto(`${app.baseURL}/dashboard/security`)
     await page.waitForTimeout(1_500)
     expect(await advanced.getAttribute('aria-expanded')).toBe('true')
-    expect(await page.locator('nav a:has-text("Security")').count()).toBe(1)
+    expect(await page.locator('nav a span:text-is("Security")').count()).toBe(1)
   }, SLOW)
 })
 

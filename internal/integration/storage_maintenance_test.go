@@ -5,6 +5,7 @@ package integration
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -126,8 +127,21 @@ func TestAnonymousPruneStillCarriesKeyQuota(t *testing.T) {
 	}
 
 	// The prune the dashboard issues, with no credential.
-	prune := env.Post(t, "/api/settings/database/prune-usage",
-		map[string]any{"days": 30}, WithoutAPIKey())
+	//
+	// The prune endpoint answers 500 "database is locked" when it races the
+	// usage-history writer — SQLite serialises writes, and under -race the
+	// whole suite runs slow enough that the window actually opens. The server
+	// treats the lock as retryable (a later call succeeds), so the assertion
+	// retries instead of pinning a timing property the race build cannot keep.
+	var prune *Result
+	for attempt := 0; attempt < 5; attempt++ {
+		prune = env.Post(t, "/api/settings/database/prune-usage",
+			map[string]any{"days": 30}, WithoutAPIKey())
+		if prune.Status == http.StatusOK || !strings.Contains(string(prune.Body), "database is locked") {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 	if prune.Status != http.StatusOK {
 		t.Fatalf("prune-usage = %d: %s", prune.Status, truncate(prune.Body))
 	}

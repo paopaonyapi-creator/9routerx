@@ -13,8 +13,13 @@ import (
 // behavior for the upstream 400 "Thinking mode does not support this
 // tool_choice": V4 models think by default, and the API rejects required/named
 // tool_choice while thinking is on. The gateway must downgrade the pin to
-// "auto" before dispatch; a request that explicitly disabled thinking, or that
-// declares no tools at all, keeps its forced choice.
+// "auto" before dispatch. A request that explicitly disabled thinking keeps
+// its forced choice. A request that declares no tools at all has its dangling
+// "required" dropped entirely by the tool-payload repair pass
+// (translator.RepairToolPayload drops a required/any choice with no tools —
+// the same policy every other provider on this lane is served under); the
+// DeepSeek relaxation itself leaves no-tools bodies untouched, so the drop is
+// the repair's doing, not a thinking-specific downgrade.
 func TestDeepSeekThinkingRelaxesForcedToolChoice(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -28,7 +33,7 @@ func TestDeepSeekThinkingRelaxesForcedToolChoice(t *testing.T) {
 		{name: "explicit disabled thinking keeps forced choice", toolChoice: "required", thinking: map[string]any{"type": "disabled"}, wantForward: "required"},
 		{name: "none passes through", toolChoice: "none", wantForward: "none"},
 		{name: "auto passes through", toolChoice: "auto", wantForward: "auto"},
-		{name: "no tools keeps forced choice", toolChoice: "required", noTools: true, wantForward: "required"},
+		{name: "no tools drops the dangling required", toolChoice: "required", noTools: true, wantForward: nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

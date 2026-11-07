@@ -140,10 +140,12 @@ jobs:
           # Menu button is the only way to reach the nav: a page missing it has
           # no navigation at all below the breakpoint, and every page would
           # still render — which is why nothing else catches this.
-          # Only wiki pages carry the disclosure; tg.html is a redirect stub.
+          # Only wiki pages carry the disclosure; tg.html is a redirect stub and
+          # index.html is the README page, whose chrome is the masthead, not the
+          # wiki sheet.
           nav_missing=0
           for page in _site/*.html; do
-            case "$(basename "$page")" in tg.html) continue ;; esac
+            case "$(basename "$page")" in tg.html|index.html) continue ;; esac
             grep -q 'id="nav-open"' "$page" || { echo "::error::$page has no Menu button; phone readers cannot navigate"; nav_missing=1; }
             grep -q 'aria-controls="wiki-side"' "$page" || { echo "::error::$page Menu button does not name the sheet it opens"; nav_missing=1; }
             grep -q 'id="wiki-side"' "$page" || { echo "::error::$page has no sidebar id"; nav_missing=1; }
@@ -170,24 +172,35 @@ jobs:
             echo "::error::$imgs images but only $lazy are lazy; a screenshot page loads them all before it is usable"
             exit 1
           }
-          # A reserved box needs both dimensions, not one.
+          # A reserved box needs both dimensions, not one. Remote images are
+          # exempt: shields.io badges have an intrinsic size the generator must
+          # not guess (and the contributor avatars carry their dimensions in the
+          # wiki markdown itself).
           sized=0
+          repo_imgs=0
           for page in _site/*.html; do
             case "$(basename "$page")" in tg.html) continue ;; esac
             while IFS= read -r img; do
+              # Remote images (shields.io badges, contributor avatars) are
+              # exempt: no quoted glob here — an unbalanced `"` inside a case
+              # pattern swallows the rest of the block and bash rejects the
+              # whole step.
+              case "$img" in *http*) continue ;; esac
+              repo_imgs=$((repo_imgs+1))
               case "$img" in *width=*height=*) sized=$((sized+1)) ;; esac
             done < <(grep -o '<img[^>]*>' "$page")
           done
-          [ "$sized" -eq "$imgs" ] || {
-            echo "::error::$imgs images but $sized carry width and height; the rest reflow the text as they load"
+          [ "$sized" -eq "$repo_imgs" ] || {
+            echo "::error::$repo_imgs local images but $sized carry width and height; the rest reflow the text as they load"
             exit 1
           }
-          # Every page must carry the same four sidebar section headings. The
-          # count excludes the stylesheet's own selector — grep the rendered
-          # markup only, so the one CSS definition does not inflate the count and
-          # hide a sidebar whose headings were lost.
+          # Every wiki page must carry the same four sidebar section headings.
+          # index.html is the README page and has no sidebar; tg.html is a
+          # redirect stub. The count excludes the stylesheet's own selector —
+          # grep the rendered markup only, so the one CSS definition does not
+          # inflate the count and hide a sidebar whose headings were lost.
           for page in _site/*.html; do
-            case "$(basename "$page")" in tg.html) continue ;; esac
+            case "$(basename "$page")" in tg.html|index.html) continue ;; esac
             markup=$(sed '/<style>/,/<\/style>/d' "$page")
             headings=$(printf '%s' "$markup" | grep -o 'class="wiki-group-title"' | wc -l)
             [ "$headings" -eq 4 ] || {
@@ -202,8 +215,8 @@ jobs:
           # stop crediting people.
           if [ -f _site/team.html ]; then
             cards=$(grep -o 'class="contrib-card' _site/team.html | wc -l)
-            [ "$cards" -eq 24 ] || {
-              echo "::error::team page has $cards contributor cards, want 24 (owner + 23)"
+            [ "$cards" -eq 25 ] || {
+              echo "::error::team page has $cards contributor cards, want 25 (owner + 24; must match TestTeamPageCreditsEveryContributor)"
               exit 1
             }
             # Exactly one owner card: a second one would make the owner ambiguous.
@@ -215,13 +228,16 @@ jobs:
             # Every card needs a link to the person's GitHub profile — the page's
             # whole point is that the username is real and clickable.
             links=$(grep -o 'href="https://github.com/[a-zA-Z0-9-]*"' _site/team.html | wc -l)
-            [ "$links" -eq 24 ] || {
-              echo "::error::team page has $links GitHub profile links, want 24"
+            [ "$links" -eq 25 ] || {
+              echo "::error::team page has $links GitHub profile links, want 25"
               exit 1
             }
             # Avatars are the first external assets the wiki loads, so they must
-            # be lazy and sized — 24 eager avatars would block the article.
-            avatars=$(grep -o 'avatars.githubusercontent.com' _site/team.html | wc -l)
+            # be lazy and sized — 25 eager avatars would block the article.
+            # Counted against every <img> rather than the avatars.githubusercontent.com
+            # host alone: the owner card serves its photo from github.com/<login>.png,
+            # and an eager owner avatar blocks the article just the same.
+            avatars=$(grep -o '<img' _site/team.html | wc -l)
             lazy_avatars=$(grep -o 'loading="lazy"' _site/team.html | wc -l)
             [ "$lazy_avatars" -eq "$avatars" ] || {
               echo "::error::$avatars avatars but $lazy_avatars are lazy"

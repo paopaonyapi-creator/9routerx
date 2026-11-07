@@ -84,7 +84,10 @@ export async function startDashboard(port: number): Promise<Dashboard> {
   // getByLabel('Password') also matches the "Show password" toggle button, so
   // the field is addressed by its id instead.
   await page.locator('#login-password').fill(PASSWORD)
-  await page.getByRole('button', { name: 'Login', exact: true }).click()
+  // The submit button reads "sign in" (lowercase) in LoginView.svelte; it
+  // briefly rewrites itself to "routing..." while the POST is in flight, and
+  // to "wait Ns" while the rate limiter holds the key.
+  await page.getByRole('button', { name: 'sign in', exact: true }).click()
   await page.waitForURL('**/dashboard/**')
 
   return {

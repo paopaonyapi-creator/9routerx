@@ -38,20 +38,6 @@
   }
 
   const rows = $derived.by((): ProviderRow[] => {
-
-  // Integer x ticks for the requests bar chart: counts are whole numbers, so
-  // the axis steps 0..max by 1 when the max is small (<=8) and by a whole
-  // fifth otherwise — never 0.2 / 1.4.
-  const maxRequests = $derived(Math.max(1, ...rows.map((r) => Number(r.requests) || 0)))
-  const barXTicks = $derived.by(() => {
-    const max = maxRequests
-    if (max <= 8) return Array.from({ length: max + 1 }, (_, i) => i)
-    const step = Math.ceil(max / 5)
-    const ticks: number[] = []
-    for (let v = 0; v <= max + step / 2; v += step) ticks.push(v)
-    if (ticks[ticks.length - 1] < max) ticks.push(max)
-    return ticks
-  })
     const source: Record<string, UsageItem> = stats.byProvider || {}
     const entries = Object.entries(source)
       .map(([id, item]) => ({
@@ -79,6 +65,23 @@
       })
     }
     return out
+  })
+
+  // Integer x ticks for the requests bar chart: counts are whole numbers, so
+  // the axis steps 0..max by 1 when the max is small (<=8) and by a whole
+  // fifth otherwise — never 0.2 / 1.4. Declared at component scope next to the
+  // other chart derivations; splicing them inside the rows callback left the
+  // line-117 reference to barXTicks out of scope (a ReferenceError that took
+  // down the whole chart panel the moment it rendered).
+  const maxRequests = $derived(Math.max(1, ...rows.map((r) => Number(r.requests) || 0)))
+  const barXTicks = $derived.by(() => {
+    const max = maxRequests
+    if (max <= 8) return Array.from({ length: max + 1 }, (_, i) => i)
+    const step = Math.ceil(max / 5)
+    const ticks: number[] = []
+    for (let v = 0; v <= max + step / 2; v += step) ticks.push(v)
+    if (ticks[ticks.length - 1] < max) ticks.push(max)
+    return ticks
   })
 
   const barConfig = $derived(

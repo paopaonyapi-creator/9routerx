@@ -63,6 +63,14 @@ func generateWiki(wikiDir, outDir, repo string) error {
 
 	pages := make([]*page, 0, len(entries))
 	for _, entry := range entries {
+		// wiki/index.md is not published: its slug would render as index.html,
+		// the name the README homepage owns (see the ordering comment in
+		// main.go). The entry-point role that page used to play — install,
+		// client setup, API — is the README's job now, so publishing both
+		// would ship two competing homes and let the wiki one win by accident.
+		if strings.EqualFold(filepath.Base(entry), "index.md") {
+			continue
+		}
 		p, err := renderWikiPage(entry, outDir)
 		if err != nil {
 			return err
@@ -125,7 +133,14 @@ func renderWikiPage(path, outDir string) (*page, error) {
 
 	doc := md.Parser().Parse(text.NewReader([]byte(body)))
 
-	images := map[string]struct{}{}
+	// Wiki pages are published flat at the site root while their markdown lives
+	// under wiki/, so a source-relative asset path and the src the published
+	// page resolves it from are not the same string: ../docs/screenshots/x.png
+	// in the markdown must ship as docs/screenshots/x.png in the HTML, or the
+	// browser climbs out of the site root and every wiki screenshot 404s on
+	// Pages. The map carries that pair — source-relative (for reading the file
+	// out of the repo) to published (for the img src and the copy destination).
+	images := map[string]string{}
 	wikiLinks := map[string]struct{}{}
 	_ = ast.Walk(doc, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
@@ -153,7 +168,8 @@ func renderWikiPage(path, outDir string) (*page, error) {
 				n.Destination = []byte(out)
 			case isAsset(n.Destination):
 				if !hasScheme(dest) && !strings.HasPrefix(dest, "/") {
-					images[dest] = struct{}{}
+					images[dest] = publishedPath(path, dest)
+					n.Destination = []byte(images[dest])
 				}
 			default:
 				n.Destination = blobURL(defaultRepo, n.Destination)
@@ -169,7 +185,8 @@ func renderWikiPage(path, outDir string) (*page, error) {
 			n.SetAttributeString("loading", []byte("lazy"))
 			n.SetAttributeString("decoding", []byte("async"))
 			if isAsset(n.Destination) && !hasScheme(dest) && !strings.HasPrefix(dest, "/") {
-				images[dest] = struct{}{}
+				images[dest] = publishedPath(path, dest)
+				n.Destination = []byte(images[dest])
 				// Dimensions are read from the file so the browser reserves the
 				// box before the bytes arrive; a lazy gallery that has no box
 				// reflows on every scroll, which is worse than no lazy loading.
@@ -184,8 +201,10 @@ func renderWikiPage(path, outDir string) (*page, error) {
 
 	// Every image the page references must exist, or the published page has a
 	// broken picture. Failing the build is what the README path already does.
-	for rel := range images {
-		if err := copyFile(filepath.Join(filepath.Dir(path), filepath.FromSlash(rel)), filepath.Join(outDirFor(path, outDir), filepath.FromSlash(rel))); err != nil {
+	// The copy reads the asset from its repo location and places it at the
+	// published path the rewritten src points at.
+	for src, published := range images {
+		if err := copyFile(filepath.Join(filepath.Dir(path), filepath.FromSlash(src)), filepath.Join(outDir, filepath.FromSlash(published))); err != nil {
 			return nil, err
 		}
 	}
@@ -314,11 +333,13 @@ func wrapTables(html string) string {
 	}
 }
 
-// outDirFor returns the directory a wiki page's assets are copied into. It
-// mirrors the page's own location in the wiki directory so a nested page keeps
-// its relative image paths.
-func outDirFor(pagePath, outDir string) string {
-	return filepath.Join(outDir, filepath.Dir(pagePath))
+// publishedPath re-points a wiki page's source-relative asset path at the
+// location the published page resolves it from. Pages render flat at the site
+// root while the markdown lives under wiki/, so ../docs/x.png in the markdown
+// must ship as docs/x.png in the HTML — see the images map comment above.
+func publishedPath(pagePath, dest string) string {
+	joined := filepath.Join(filepath.Dir(pagePath), filepath.FromSlash(dest))
+	return filepath.ToSlash(joined)
 }
 
 // splitFrontmatter separates a leading `---` delimited block from the body.

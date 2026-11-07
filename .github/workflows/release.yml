@@ -44,8 +44,28 @@ jobs:
       channel: ${{ steps.resolve.outputs.channel }}
       prerelease: ${{ steps.resolve.outputs.prerelease }}
       docker_tags: ${{ steps.resolve.outputs.docker_tags }}
+      has_dockerhub: ${{ steps.dockerhub.outputs.has }}
     steps:
       - uses: actions/checkout@v4
+
+      # Secrets cannot be referenced from an `if` condition — GitHub rejects the
+      # whole workflow file at load time ("Unrecognized named-value: 'secrets'",
+      # which turned every push into a 0-second run with no jobs). Credential
+      # presence is therefore probed here, where an `env:` block may read
+      # secrets, and the docker job gates on this output in its own job-level
+      # `if` (the `needs` context IS allowed there).
+      - name: Probe Docker Hub credentials
+        id: dockerhub
+        run: |
+          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            echo "has=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has=false" >> "$GITHUB_OUTPUT"
+            echo "DOCKERHUB_USERNAME/DOCKERHUB_TOKEN not configured; the docker job will be skipped."
+          fi
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Resolve channel and verify version sources
         id: resolve
@@ -307,10 +327,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   docker:
-    # Docker Hub credentials are optional: the job skips image publishing
-    # until DOCKERHUB_USERNAME + DOCKERHUB_TOKEN secrets are configured.
+    # Docker Hub credentials are optional: the job is skipped unless both
+    # DOCKERHUB_USERNAME + DOCKERHUB_TOKEN secrets are configured (probed by
+    # the channel job — secrets must never appear in an `if`, see above).
     # GitHub release binaries + checksums do not depend on it.
-    if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
+    if: startsWith(github.ref, 'refs/tags/v') && needs.channel.outputs.has_dockerhub == 'true'
     name: Build and push Docker image
     needs: channel
     runs-on: ubuntu-latest

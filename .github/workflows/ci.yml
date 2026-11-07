@@ -69,6 +69,18 @@ jobs:
             # reason.
             git fetch --no-tags origin "${GITHUB_BASE_REF}"
             REV="FETCH_HEAD"
+          elif git rev-parse --verify -q "HEAD~1^{commit}" >/dev/null; then
+            REV="HEAD~1"
+          elif [ "$(git rev-list --count HEAD)" = "1" ]; then
+            # A root commit has no parent to ratchet against, and this repo's
+            # history is a single squashed commit. Everything in the tree is
+            # pre-existing debt by definition — the same accepted state the
+            # --new-from-rev ratchet exists to keep from growing — so the
+            # baseline falls back to HEAD (a self-diff reports nothing) and
+            # the gate stays green instead of failing every push forever.
+            # The ratchet wakes up automatically once a second commit exists.
+            REV="HEAD"
+            echo "::notice::single-commit history: no parent baseline exists; the new-findings ratchet is dormant until history grows."
           else
             REV="HEAD~1"
           fi
@@ -353,7 +365,7 @@ jobs:
       # platform where systray needs no cgo or pkg-config, so the build that
       # proves the file still compiles is free here and exists nowhere else.
       - name: Build tray binary
-        run: go build -o /dev/null ./cmd/9router-tray/
+        run: go build -o /dev/null ./cmd/9routerx-tray/
 
   # The `test` job above runs `go test ./...` without -race, so a data race
   # could merge green and only surface on a user's machine under load. The
@@ -396,7 +408,10 @@ jobs:
           cache: true
 
       - name: Test with race detector
-        run: go test -race -count=1 -timeout 10m ./...
+        # -timeout 20m: the race build of the chat handler suite brushes the
+        # 10-minute default when a runner is contended, and a timeout panic
+        # reads as a data race to anyone skimming the job list.
+        run: go test -race -count=1 -timeout 20m ./...
 
   # Unit tests exercise handlers with a hand-built router, so they cannot see a
   # regression in the wiring that production actually mounts: a route

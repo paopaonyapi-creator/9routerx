@@ -96,9 +96,9 @@ describe('top bar', () => {
       await page.getByRole('button', { name: 'Account and display options' }).click()
       await page.getByRole('menuitem', { name: 'Change Log' }).click()
       // The changelog dialog is the observable consequence of picking that
-      // entry. Its heading reads "Changelog" — one word, no space — which is
-      // why this cannot match the menu item's "Change Log" label.
-      await page.getByRole('heading', { name: 'Changelog', exact: true }).waitFor()
+      // entry. Its heading reads "Change Log" — the same two words as the menu
+      // item — so the wait below pins the dialog, not the menu that opened it.
+      await page.getByRole('heading', { name: 'Change Log', exact: true }).waitFor()
       await page.keyboard.press('Escape')
     },
     SLOW,

@@ -174,6 +174,9 @@ func TestHeadingsAnchorMatchesGoldmark(t *testing.T) {
 
 // generateWiki renders every page into the output directory and writes the
 // index the client-side search reads. Both are part of the published contract.
+// wiki/index.md is the one exception: it is not published, because its slug
+// would render as index.html — the name the README homepage owns — and a
+// second home would either 404 or silently replace the README.
 func TestGenerateWiki(t *testing.T) {
 	root := t.TempDir()
 	wiki := filepath.Join(root, "wiki")
@@ -192,25 +195,32 @@ func TestGenerateWiki(t *testing.T) {
 		t.Fatalf("generateWiki: %v", err)
 	}
 
-	for _, rel := range []string{"index.html", "api.html", "search-index.json"} {
+	for _, rel := range []string{"api.html", "search-index.json"} {
 		if _, err := os.Stat(filepath.Join(out, rel)); err != nil {
 			t.Errorf("expected %s in the output: %v", rel, err)
 		}
 	}
+	if _, err := os.Stat(filepath.Join(out, "index.html")); !os.IsNotExist(err) {
+		t.Errorf("index.html was written by the wiki; the README homepage owns that name")
+	}
 
-	page := readFile(t, filepath.Join(out, "index.html"))
-	// The sidebar is built from every page, ordered by the frontmatter value.
-	for _, want := range []string{`href="api.html"`, `href="index.html"`, `aria-current="page"`} {
+	page := readFile(t, filepath.Join(out, "api.html"))
+	// The sidebar is built from every published page, ordered by the
+	// frontmatter value; the wordmark points home.
+	for _, want := range []string{`href="index.html"`, `aria-current="page"`} {
 		if !strings.Contains(page, want) {
-			t.Errorf("index.html is missing %q", want)
+			t.Errorf("api.html is missing %q", want)
 		}
 	}
 
 	index := readFile(t, filepath.Join(out, "search-index.json"))
-	for _, want := range []string{`"slug":"api"`, `"anchor":"api-surface"`, `"title":"Home"`} {
+	for _, want := range []string{`"slug":"api"`, `"anchor":"api-surface"`} {
 		if !strings.Contains(index, want) {
 			t.Errorf("search index is missing %q", want)
 		}
+	}
+	if strings.Contains(index, `"title":"Home"`) {
+		t.Errorf("search index contains the unpublished wiki home page")
 	}
 }
 

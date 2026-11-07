@@ -194,9 +194,19 @@ describe('providers & media separation', () => {
   })
 
   it('resolves every provider alias to a catalog with an entry', () => {
-    const missing = Object.keys(PROVIDER_ID_TO_ALIAS).filter(
-      (id) => !PROVIDER_CATALOG.some((p) => p.id === id || p.alias === id)
-    )
+    // A dashboard id resolves two ways: directly (the catalog carries the id or
+    // an alias equal to it), or through the wire alias in PROVIDER_ID_TO_ALIAS —
+    // the router resolves that alias server-side (ProviderAliasMap in
+    // internal/providers), so a catalog entry under the wire spelling serves the
+    // same provider. 'mimo-free' takes the second path: upstream registers it
+    // with the wire alias 'mmf', and the raw parse of the Go registry misses the
+    // misindented duplicate rows the browser's alias-dedup drops anyway.
+    const missing = Object.keys(PROVIDER_ID_TO_ALIAS).filter((id) => {
+      const wire = PROVIDER_ID_TO_ALIAS[id]
+      return !PROVIDER_CATALOG.some(
+        (p) => p.id === id || p.alias === id || p.id === wire || p.alias === wire
+      )
+    })
     assert.deepStrictEqual(missing, [])
   })
 

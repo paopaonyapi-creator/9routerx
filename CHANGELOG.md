@@ -7,7 +7,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Release history up to the fork point is archived at
 [`docs/changelog/9router-go-legacy.md`](docs/changelog/9router-go-legacy.md).
 
-## [1.0.0] - 2026-11-06
+## [Unreleased]
+
+### Changed
+
+- Release sections carry the `v` prefix (`## [v1.0.0]`), matching what the
+  release workflow's notes extraction and the dashboard changelog both expect;
+  the pending-fragment splice now lands under this Unreleased heading instead
+  of above the file title.
+
+## [v1.0.0] - 2026-11-06
 
 Forked from 9router-go (luqman-v1), upstream decolua/9router — attribution and thanks.
 

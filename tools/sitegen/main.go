@@ -29,6 +29,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -47,18 +48,22 @@ func main() {
 	repo := flag.String("repo", "yanstd888/9routerx", "owner/name used to resolve relative repository links")
 	flag.Parse()
 
-	if err := generate(*readmePath, *assetsDir, *outDir, *repo); err != nil {
-		fmt.Fprintln(os.Stderr, "sitegen:", err)
-		os.Exit(1)
-	}
-
-	// The wiki is optional: a checkout without it still produces the project
-	// page, which is what the Pages job has always published.
+	// The wiki renders BEFORE the README so the README homepage wins
+	// index.html. Both write that name — wiki/index.md renders with the slug
+	// "index" — and the Pages workflow's contract is that the project page is
+	// the README ("the README becomes index.html", see TestGenerate and the
+	// pages.yml entry-point assert). Generating in the other order let the
+	// wiki home silently replace the README as the site's homepage.
 	if info, err := os.Stat(*wikiDir); err == nil && info.IsDir() {
 		if err := generateWiki(*wikiDir, *outDir, *repo); err != nil {
 			fmt.Fprintln(os.Stderr, "sitegen:", err)
 			os.Exit(1)
 		}
+	}
+
+	if err := generate(*readmePath, *assetsDir, *outDir, *repo); err != nil {
+		fmt.Fprintln(os.Stderr, "sitegen:", err)
+		os.Exit(1)
 	}
 }
 
@@ -113,7 +118,7 @@ func renderMarkdown(readmePath, outDir, repo string) ([]byte, error) {
 	doc := md.Parser().Parse(text.NewReader(src))
 
 	images := map[string]struct{}{}
-	rewriteRelativeLinks(doc, repo, images)
+	rewriteRelativeLinks(doc, repo, readmePath, images)
 
 	for rel := range images {
 		if err := copyFile(filepath.Join(filepath.Dir(readmePath), filepath.FromSlash(rel)), filepath.Join(outDir, filepath.FromSlash(rel))); err != nil {
@@ -125,13 +130,22 @@ func renderMarkdown(readmePath, outDir, repo string) ([]byte, error) {
 	if err := md.Renderer().Render(&buf, src, doc); err != nil {
 		return nil, fmt.Errorf("render html: %w", err)
 	}
-	return buf.Bytes(), nil
+	// The README carries wide tables too (the environment table, the
+	// screenshot gallery), so it gets the same scroll wrappers as the wiki
+	// pages — the deploy asserts the pairing across the whole site.
+	return []byte(wrapTables(buf.String())), nil
 }
 
 // rewriteRelativeLinks points every repository-relative link at github.com and
 // records the image ones for copying. Anchors, absolute URLs and site-absolute
 // paths are left untouched.
-func rewriteRelativeLinks(doc ast.Node, repo string, images map[string]struct{}) {
+//
+// Every image — remote badges included — is marked lazy and async, matching
+// the wiki renderer: the homepage ships the screenshot table and the badge
+// row, and the Pages deploy asserts that eager images cannot happen. Local
+// images additionally carry width and height read from the file, so the
+// browser reserves the box before the bytes arrive.
+func rewriteRelativeLinks(doc ast.Node, repo, readmePath string, images map[string]struct{}) {
 	_ = ast.Walk(doc, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -144,6 +158,8 @@ func rewriteRelativeLinks(doc ast.Node, repo string, images map[string]struct{})
 			// alone; isAsset only matches extension, so the scheme check that
 			// blobURL does has to come first or every badge is "copied" from a
 			// path named after its https:// prefix.
+			n.SetAttributeString("loading", []byte("lazy"))
+			n.SetAttributeString("decoding", []byte("async"))
 			if hasScheme(string(n.Destination)) || strings.HasPrefix(string(n.Destination), "/") {
 				return ast.WalkContinue, nil
 			}
@@ -152,6 +168,10 @@ func rewriteRelativeLinks(doc ast.Node, repo string, images map[string]struct{})
 				return ast.WalkContinue, nil
 			}
 			images[string(n.Destination)] = struct{}{}
+			if w, h, ok := imageSize(filepath.Join(filepath.Dir(readmePath), filepath.FromSlash(string(n.Destination)))); ok {
+				n.SetAttributeString("width", []byte(strconv.Itoa(w)))
+				n.SetAttributeString("height", []byte(strconv.Itoa(h)))
+			}
 		}
 		return ast.WalkContinue, nil
 	})

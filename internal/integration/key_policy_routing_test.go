@@ -78,11 +78,11 @@ func TestDenyAllKeyIsRefusedOnEveryInferenceLane(t *testing.T) {
 // produced by some other policy (quota, expiry) must not be mistaken for the
 // model-access denial this suite is about.
 //
-// The pair below is upstream's, reached through errorResponse(FORBIDDEN, …) →
-// buildErrorBody → ERROR_TYPES[403], which the port reproduces in
-// internal/handlerutil/response.go. There is no "model_not_allowed" code
-// anywhere in the tree. The full body — including the message naming the
-// requested model — is pinned at the unit level in
+// The port sharpened upstream's generic ERROR_TYPES[403] pair into
+// {permission_error, model_not_allowed} (port(serenhope) TASK-1.1, served from
+// internal/handlers/chat/access.go), so a client can tell "wrong model" from
+// "out of quota". The full body — including the message naming the requested
+// model — is pinned at the unit level in
 // internal/handlers/chat/access_error_shape_test.go; this suite only has to
 // prove the gate reaches that writer.
 func assertAccessDenialCode(t *testing.T, res *Result) {
@@ -94,8 +94,8 @@ func assertAccessDenialCode(t *testing.T, res *Result) {
 		} `json:"error"`
 	}
 	res.Decode(t, &envelope)
-	if envelope.Error.Type != "permission_error" || envelope.Error.Code != "insufficient_quota" {
-		t.Errorf("error = {%q, %q}, want {permission_error, insufficient_quota} (body: %s)",
+	if envelope.Error.Type != "permission_error" || envelope.Error.Code != "model_not_allowed" {
+		t.Errorf("error = {%q, %q}, want {permission_error, model_not_allowed} (body: %s)",
 			envelope.Error.Type, envelope.Error.Code, truncate(res.Body))
 	}
 }
