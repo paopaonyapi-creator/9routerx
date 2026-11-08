@@ -10,7 +10,7 @@ Local/remote AI gateway exposing OpenAI-compatible REST. One key, many providers
 ## Setup
 
 ```bash
-export 9ROUTERX_URL="http://localhost:888"      # or VPS / tunnel URL
+export 9ROUTERX_URL="http://localhost:20128"      # or VPS / tunnel URL
 export 9ROUTERX_KEY="sk-..."                      # from Dashboard → Keys (only if requireApiKey=true)
 ```
 

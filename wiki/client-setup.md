@@ -10,17 +10,17 @@ section: Getting Started
 
 ```
 Claude Code / Codex / OpenClaw / Cursor / Cline Settings:
-  Endpoint: http://localhost:888/v1
+  Endpoint: http://localhost:20128/v1
   API Key:  [Settings → API Keys in the dashboard]
   Model:    kr/claude-sonnet-4.5
 ```
 
-For Claude Messages clients: `ANTHROPIC_BASE_URL=http://localhost:888/v1`.
+For Claude Messages clients: `ANTHROPIC_BASE_URL=http://localhost:20128/v1`.
 
 ## curl example
 
 ```bash
-curl http://localhost:888/v1/chat/completions \
+curl http://localhost:20128/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer sk-your-api-key' \
   -d '{"model":"ag/gemini-3.8-flash-high","messages":[{"role":"user","content":"Hello"}],"stream":true}'
@@ -30,7 +30,7 @@ curl http://localhost:888/v1/chat/completions \
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PORT` | `888` | HTTP port |
+| `PORT` | `20128` | HTTP port |
 | `HOST` / `BIND_ADDR` | all interfaces | Listener address |
 | `DATA_DIR` | `~/.9router` (`%APPDATA%/9router` on Windows) | Data root |
 | `DB_PATH` | `$DATA_DIR/db/data.sqlite` | SQLite file |

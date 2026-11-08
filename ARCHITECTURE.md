@@ -167,7 +167,7 @@ key.
 2. returns 404 for a missing file-like path; and
 3. falls back to `index.html` for extensionless SPA routes.
 
-The Svelte app owns navigation among `/dashboard/...` views. Its typed client uses relative `/api`, `/v1`, `/usage`, and `/translator` requests. During development, Vite proxies those prefixes to a separately running Go server at `localhost:888`.
+The Svelte app owns navigation among `/dashboard/...` views. Its typed client uses relative `/api`, `/v1`, `/usage`, and `/translator` requests. During development, Vite proxies those prefixes to a separately running Go server at `localhost:20128`.
 
 There is no production Node.js process. Bun is still required at build time to install dependencies and produce `web/dist`. `make web-build` skips building when `web/dist/index.html` exists; use `FORCE=1 make web-build` after dashboard changes.
 

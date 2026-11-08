@@ -11,12 +11,12 @@ Every command comes from the single binary.
 ## Running the gateway
 
 ```bash
-9routerx                  # foreground (port 888, data ~/.9router)
+9routerx                  # foreground (port 20128, data ~/.9router)
 9routerx --background     # detach and return; same as `9routerx start`
 9routerx -d               # short alias
 9routerx version          # version details, plus an update check
 9routerx update           # check and self-update
-curl http://localhost:888/health
+curl http://localhost:20128/health
 ```
 
 ## Background daemon
@@ -89,7 +89,7 @@ or quit.
 
 ```bash
 # the tray ships as its own package
-9routerx-tray --port 888
+9routerx-tray --port 20128
 ```
 
 ## MITM proxy
@@ -110,7 +110,7 @@ There are no `--port` flags; use environment variables.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `PORT` | `888` | HTTP port |
+| `PORT` | `20128` | HTTP port |
 | `DATA_DIR` | `~/.9router` (`%APPDATA%/9router` on Windows) | Data root |
 | `DB_PATH` | `$DATA_DIR/db/data.sqlite` | SQLite file |
 | `HOST` / `BIND_ADDR` | all interfaces | Listener address |

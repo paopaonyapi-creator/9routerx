@@ -69,7 +69,7 @@ Same idea as [9Router](https://github.com/decolua/9router), minus the Node.js ru
 │  Your CLI   │  (Claude Code, Codex, OpenClaw, Cursor, Cline...)
 │   Tool      │
 └──────┬──────┘
-       │ http://localhost:888/v1
+       │ http://localhost:20128/v1
        ↓
 ┌─────────────────────────────────────────────┐
 │         9routerx (Smart Router)            │
@@ -112,13 +112,13 @@ curl -fsSL https://raw.githubusercontent.com/yanstd888/9routerx/main/install.sh 
 irm https://raw.githubusercontent.com/yanstd888/9routerx/main/install.ps1 | iex
 ```
 
-Then start it (defaults: port `888`, data `~/.9router` — no flags needed):
+Then start it (defaults: port `20128`, data `~/.9router` — no flags needed):
 
 ```bash
 9routerx
-# Dashboard: http://localhost:888 (Default password: 123456)
+# Dashboard: http://localhost:20128 (Default password: 123456)
 ```
-> **Already using upstream [9Router](https://github.com/decolua/9router)?** Point 9routerx at the same data dir — it opens the **same `DATA_DIR/db/data.sqlite`**. Your providers, connections, combos, API keys, and usage history carry over as-is. No import step, no migration. See [Sharing a database with 9Router](#sharing-a-database-with-9router) for the caveats.
+> **Already using upstream [9Router](https://github.com/decolua/9router)?** Drop-in compatible: same default port 20128 as 9router / 9router-go — point your existing client at 9routerx with zero config changes. 9routerx opens the **same `DATA_DIR/db/data.sqlite`** too: your providers, connections, combos, API keys, and usage history carry over as-is. No import step, no migration. See [Sharing a database with 9Router](#sharing-a-database-with-9router) for the caveats.
 
 **Keep the terminal free (background mode):**
 
@@ -166,7 +166,7 @@ Dashboard → Providers → Connect **Kiro AI** (~50 credits/month free) or **Op
 
 ```text
 Claude Code / Codex / OpenClaw / Cursor / Cline Settings:
-  Endpoint: http://localhost:888/v1
+  Endpoint: http://localhost:20128/v1
   API Key:  [Settings → API Keys in the dashboard]
   Model:    kr/claude-sonnet-4.5
 ```
@@ -178,8 +178,8 @@ Claude Code / Codex / OpenClaw / Cursor / Cline Settings:
 ```bash
 # Docker — no build needed
 docker run -d --name 9routerx --restart unless-stopped \
-  -p 888:888 -v "$HOME/.9router:/data" \
-  -e PORT=888 -e DATA_DIR=/data \
+  -p 20128:20128 -v "$HOME/.9router:/data" \
+  -e PORT=20128 -e DATA_DIR=/data \
   -e INITIAL_PASSWORD=your-secure-password \
   ghcr.io/yanstd888/9routerx:latest
 
@@ -262,8 +262,9 @@ Stop 9Router, start 9routerx, and log in with your existing password. Your provi
 **You don't even have to stop 9Router** if you want to keep the Node.js dashboard around. Run 9routerx on a different port against the same `DATA_DIR`:
 
 ```bash
-# 9Router on :20128 (Next.js)  ·  9routerx on :888 (Go, same DB)
-PORT=888 DATA_DIR=/home/you/.9router 9routerx
+# Both gateways now default to :20128 — give 9routerx an explicit
+# different port (any free one works) to run side by side:
+PORT=20129 DATA_DIR=/home/you/.9router 9routerx
 ```
 
 Both read the same tables, so a connection you add in either dashboard shows up in the other. SQLite serialises the writes; the supported setup is one active writer, so avoid editing the same combo or settings entry in both at the same moment.
@@ -347,11 +348,11 @@ make build       # embeds VERSION into the Go binary
 
 ### Run
 
-Defaults are enough for most people — plain `9routerx` listens on port `888` with data in `~/.9router`:
+Defaults are enough for most people — plain `9routerx` listens on port `20128` with data in `~/.9router`:
 
 ```bash
 9routerx
-curl http://localhost:888/health
+curl http://localhost:20128/health
 9routerx version
 ```
 
@@ -376,20 +377,20 @@ HOST=127.0.0.1 9routerx                     # localhost only, behind a reverse p
      ```
   2. **Or access via SSH port-forwarding first**:
      ```bash
-     ssh -L 888:127.0.0.1:888 user@remote-host
-     # Open http://localhost:888, login with 123456, then change password in Settings
+     ssh -L 20128:127.0.0.1:20128 user@remote-host
+     # Open http://localhost:20128, login with 123456, then change password in Settings
      ```
 
 ### Client example
 
 ```bash
-curl http://localhost:888/v1/chat/completions \
+curl http://localhost:20128/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer sk-your-api-key' \
   -d '{"model":"ag/gemini-3.8-flash-high","messages":[{"role":"user","content":"Hello"}],"stream":true}'
 ```
 
-For Claude Messages clients: `ANTHROPIC_BASE_URL=http://localhost:888/v1`.
+For Claude Messages clients: `ANTHROPIC_BASE_URL=http://localhost:20128/v1`.
 
 <details>
 <summary><b>Advanced: environment variables, API surface, auth, database</b></summary>
@@ -398,7 +399,7 @@ For Claude Messages clients: `ANTHROPIC_BASE_URL=http://localhost:888/v1`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `PORT` | `888` | HTTP port |
+| `PORT` | `20128` | HTTP port |
 | `HOST` / `BIND_ADDR` | all interfaces | Listener address |
 | `DATA_DIR` | `~/.9router` (`%APPDATA%/9router` on Windows) | Data root |
 | `DB_PATH` | `$DATA_DIR/db/data.sqlite` | SQLite file |
@@ -522,7 +523,7 @@ Go reads/writes the upstream 9router table/JSON shapes and bootstraps the core s
 Yes — MIT-licensed and free to run. The gateway itself costs nothing; you bring your own provider accounts, and its whole design pushes traffic toward the free and cheap tiers (the free-tier catalog, the circuit breaker, and per-key budget ceilings all serve that goal).
 
 **Does it work with Claude Code, Codex, Cursor, or Cline?**
-Yes — anything that speaks the OpenAI Chat Completions API, the Claude Messages API, the Responses API, or Ollama-compatible chat points at `http://localhost:888/v1` with an API key minted in the dashboard. The wiki's [client setup page](https://yanstd888.github.io/9routerx/client-setup.html) has per-tool snippets.
+Yes — anything that speaks the OpenAI Chat Completions API, the Claude Messages API, the Responses API, or Ollama-compatible chat points at `http://localhost:20128/v1` with an API key minted in the dashboard. The wiki's [client setup page](https://yanstd888.github.io/9routerx/client-setup.html) has per-tool snippets.
 
 **How is this different from running Ollama?**
 Ollama serves local models. 9RouterX is a router in front of cloud and subscription providers — it fails over between your subscription quota, cheap paid models, and free tiers, and adds token compression, caching, and per-key governance on top. The two compose fine: an Ollama endpoint can be one of the providers.

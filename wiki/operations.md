@@ -13,8 +13,8 @@ maintenance, and the background loops that keep a deployment healthy.
 
 ```bash
 docker run -d --name 9routerx --restart unless-stopped \
-  -p 888:888 -v "$HOME/.9router:/data" \
-  -e PORT=888 -e DATA_DIR=/data \
+  -p 20128:20128 -v "$HOME/.9router:/data" \
+  -e PORT=20128 -e DATA_DIR=/data \
   -e INITIAL_PASSWORD=your-secure-password \
   yanstd888/9routerx:latest
 ```

@@ -32,16 +32,16 @@ No flags required:
 
 | | Default |
 |---|---|
-| Port | `888` |
+| Port | `20128` |
 | Data | `~/.9router` (`%APPDATA%/9router` on Windows) |
-| Dashboard | `http://localhost:888` |
+| Dashboard | `http://localhost:20128` |
 | Initial password | `123456` (localhost only) |
 
 ## Running
 
 ```bash
 9routerx              # run in the foreground
-curl http://localhost:888/health
+curl http://localhost:20128/health
 9routerx version
 ```
 
@@ -94,8 +94,8 @@ pick `--backend cron`), and on Windows install registers a scheduled task via
 
 ```bash
 docker run -d --name 9routerx --restart unless-stopped \
-  -p 888:888 -v "$HOME/.9router:/data" \
-  -e PORT=888 -e DATA_DIR=/data \
+  -p 20128:20128 -v "$HOME/.9router:/data" \
+  -e PORT=20128 -e DATA_DIR=/data \
   -e INITIAL_PASSWORD=your-secure-password \
   yanstd888/9routerx:latest
 ```
@@ -127,6 +127,6 @@ make build       # embeds VERSION into the Go binary
      ```
   2. Or access via SSH port-forwarding first:
      ```bash
-     ssh -L 888:127.0.0.1:888 user@remote-host
-     # open http://localhost:888, log in with 123456, then change the password
+     ssh -L 20128:127.0.0.1:20128 user@remote-host
+     # open http://localhost:20128, log in with 123456, then change the password
      ```
