@@ -848,7 +848,7 @@
   // Keys management
   async function handleCreateKey(e: SubmitEvent) {
     e.preventDefault()
-    if (!newKeyName.trim()) return
+    if (isSubmittingKey || bulkKeyBusy || bulkKeyResults.length > 0 || !newKeyName.trim()) return
 
     isSubmittingKey = true
     try {
@@ -888,13 +888,14 @@
   // One close path for the create-key dialog: the X, Escape and the backdrop
   // click all funnel here so every exit resets the draft the same way.
   function closeCreateKeyModal() {
+    if (isSubmittingKey || bulkKeyBusy || bulkKeyResults.length > 0) return
     isCreateKeyOpen = false
     newKeyName = ''
     createKeyTab = 'single'
     resetBulkKeyForm()
   }
   async function handleBulkCreateKeys() {
-    if (bulkEntries.length === 0 || bulkProblems.length > 0) return
+    if (isSubmittingKey || bulkKeyBusy || bulkKeyResults.length > 0 || bulkEntries.length === 0 || bulkProblems.length > 0) return
     bulkKeyBusy = true
     bulkKeyError = null
     const created: { name: string; machineId: string; key: string }[] = []
@@ -1308,6 +1309,7 @@
         <button
           type="button"
           aria-label={t('Close')}
+          disabled={isSubmittingKey || bulkKeyBusy}
           onclick={closeCreateKeyModal}
           class="text-text-muted hover:text-text-main cursor-pointer"
         >
@@ -1319,6 +1321,7 @@
       <div class="flex gap-1 rounded-lg border border-border bg-surface-2/50 p-1">
         <button
           type="button"
+          disabled={isSubmittingKey || bulkKeyBusy}
           onclick={() => (createKeyTab = 'single')}
           class="flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition cursor-pointer {createKeyTab === 'single'
             ? 'bg-surface text-text-main shadow-sm'
@@ -1328,6 +1331,7 @@
         </button>
         <button
           type="button"
+          disabled={isSubmittingKey || bulkKeyBusy}
           onclick={() => (createKeyTab = 'bulk')}
           class="flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition cursor-pointer {createKeyTab === 'bulk'
             ? 'bg-surface text-text-main shadow-sm'
@@ -1366,10 +1370,8 @@
           </button>
           <button
             type="button"
-            onclick={() => {
-              isCreateKeyOpen = false
-              newKeyName = ''
-            }}
+            disabled={isSubmittingKey || bulkKeyBusy}
+            onclick={closeCreateKeyModal}
             class="flex-1 py-2 px-4 rounded-lg bg-surface-2 hover:bg-surface-3 text-text-main font-semibold text-xs transition cursor-pointer border border-border"
           >
             Cancel
@@ -1448,11 +1450,8 @@
           </button>
           <button
             type="button"
-            onclick={() => {
-              isCreateKeyOpen = false
-              createKeyTab = 'single'
-              resetBulkKeyForm()
-            }}
+            disabled={isSubmittingKey || bulkKeyBusy}
+            onclick={closeCreateKeyModal}
             class="flex-1 py-2 px-4 rounded-lg bg-surface-2 hover:bg-surface-3 text-text-main font-semibold text-xs transition cursor-pointer border border-border"
           >
             Cancel
@@ -1520,8 +1519,10 @@
         </button>
         <button
           type="button"
+          disabled={bulkKeyBusy || isSubmittingKey}
           onclick={() => {
-            bulkKeyResults = []
+            if (bulkKeyBusy || isSubmittingKey) return
+            resetBulkKeyForm()
             isCreateKeyOpen = false
             createKeyTab = 'single'
           }}
