@@ -96,6 +96,13 @@
 
   // General Settings State
   let requireLogin = $state(false)
+  // Whether the server has actually stated a requireLogin value. The backend
+  // leaves the key absent on a fresh database and enforces login there, so an
+  // absent field must NOT be echoed back as an explicit false on save — that
+  // is how saving a display preference once disabled the login gate. The
+  // toggle itself sets this flag: a flipped switch is an operator decision
+  // and always reaches the payload.
+  let requireLoginKnown = $state(false)
   let sessionTimeout = $state('24h')
   let enableObservability = $state(false)
   let observabilityMode = $state<'full' | 'errors_only' | 'off'>('full')
@@ -300,7 +307,15 @@
 
   $effect(() => {
     if (settings) {
-      requireLogin = !!settings.requireLogin
+      if ('requireLogin' in settings) {
+        requireLogin = !!settings.requireLogin
+        requireLoginKnown = true
+      } else {
+        // Absent means the backend default: login enforced. Show the switch
+        // in the state the server actually behaves as instead of a lie that
+        // one save could make true.
+        requireLogin = true
+      }
       enableObservability = !!settings.enableObservability
       if (settings.observabilityMode === 'full' || settings.observabilityMode === 'errors_only' || settings.observabilityMode === 'off') {
         observabilityMode = settings.observabilityMode
@@ -345,7 +360,12 @@
     try {
       const s = await api.getSettings()
       if (s) {
-        requireLogin = !!s.requireLogin
+        if ('requireLogin' in s) {
+          requireLogin = !!s.requireLogin
+          requireLoginKnown = true
+        } else {
+          requireLogin = true
+        }
         enableObservability = !!s.enableObservability
         if (s.sessionTimeout) sessionTimeout = String(s.sessionTimeout)
         if (s.fallbackStrategy) fallbackStrategy = String(s.fallbackStrategy)
@@ -490,7 +510,10 @@
     saveSuccess = false
     try {
       await api.updateSettings({
-        requireLogin,
+        // Only a value the server stated or the operator set is sent. An
+        // unknown requireLogin stays out of the payload so the backend keeps
+        // its enforce-login default instead of receiving an explicit false.
+        ...(requireLoginKnown ? { requireLogin } : {}),
         sessionTimeout,
         enableObservability,
         observabilityMode,
@@ -858,7 +881,10 @@
           checked={requireLogin}
           size="sm"
           label="Require login"
-          onChange={(val) => (requireLogin = val)}
+          onChange={(val) => {
+            requireLogin = val
+            requireLoginKnown = true
+          }}
         />
       </div>
 
