@@ -8,7 +8,7 @@
   import { notifications } from '../lib/notifications'
   import { copyToClipboard } from '../lib/clipboard'
   import PeriodSelect from './analytics/PeriodSelect.svelte'
-  import { periodLabel, type Period } from './analytics/types'
+  import { periodLabel, rememberPeriod, storedPeriod, type Period } from './analytics/types'
   import Menu from '../lib/ui/Menu.svelte'
   import MenuItem from '../lib/ui/MenuItem.svelte'
   import { costIn, currentCurrency } from '../lib/currency.svelte'
@@ -30,7 +30,8 @@
   // analyticsrange on the server. This section used to accept only four fixed
   // windows while the Overview beside it accepted custom ones, which put two
   // dropdowns with different vocabularies on one page.
-  let since = $state<Period>('24h')
+  let since = $state<Period>(storedPeriod('compression', '24h'))
+  $effect(() => rememberPeriod('compression', since))
   let loading = $state(true)
   let stats = $state<CompressionAnalyticsSummary | null>(null)
   let autoRefresh = $state(false)

@@ -11,6 +11,8 @@
   import {
     fmt,
     timeAgo,
+    rememberPeriod,
+    storedPeriod,
     type Period,
     type StatsData,
     type RequestDetailItem,
@@ -54,7 +56,8 @@
   // section they picked after a browser-back navigation restored the old path.
   // svelte-ignore state_referenced_locally
   let section = $state<UsageSection>(USAGE_SECTION_BY_TAB[tab] ?? 'overview')
-  let period = $state<Period>('today')
+  let period = $state<Period>(storedPeriod('usage', 'today'))
+  $effect(() => rememberPeriod('usage', period))
   let isFetching = $state(false)
 
   // The two optional Overview panels start collapsed and say so with a chevron,

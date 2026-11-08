@@ -189,6 +189,41 @@ export function normalizeCustomPeriod(input: string): PeriodPreset | null {
   return null
 }
 
+// Each Usage section remembers its last window across reloads: an operator who
+// narrowed to 12h expects to come back to 12h, not to the section default.
+// Keys are namespaced like the other UI choices (9routerx-theme,
+// 9routerx-nav-*).
+const PERIOD_STORAGE_PREFIX = '9routerx-analytics-period-'
+
+// Accepts only a value the selector could have produced — a known preset or a
+// custom window within the ten-year cap. Anything stale, corrupt or
+// hand-edited falls back to the view's default instead of crashing.
+export function sanitizeStoredPeriod(raw: string): Period | null {
+  if (PERIODS.some((p) => p.value === raw)) return raw as PeriodPreset
+  return normalizeCustomPeriod(raw)
+}
+
+export function storedPeriod(key: string, fallback: Period): Period {
+  if (typeof window === 'undefined') return fallback
+  try {
+    const raw = window.localStorage.getItem(PERIOD_STORAGE_PREFIX + key)
+    if (!raw) return fallback
+    return sanitizeStoredPeriod(raw) ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
+export function rememberPeriod(key: string, value: Period): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(PERIOD_STORAGE_PREFIX + key, value)
+  } catch {
+    // Storage can be unavailable (private mode, quota) — the picker still
+    // works, the choice just does not survive a reload.
+  }
+}
+
 export const TABLE_OPTIONS: { value: TableView; label: string }[] = [
   { value: 'model', label: 'Usage by Model' },
   { value: 'provider', label: 'Usage by Provider' },

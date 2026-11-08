@@ -12,7 +12,7 @@
   import MenuItem from '../lib/ui/MenuItem.svelte'
   import ViewSelect from './analytics/ViewSelect.svelte'
   import PeriodSelect from './analytics/PeriodSelect.svelte'
-  import { periodLabel, type Period } from './analytics/types'
+  import { periodLabel, rememberPeriod, storedPeriod, type Period } from './analytics/types'
   import type { ViewOption } from './analytics/types'
   import { costIn } from '../lib/currency.svelte'
   import { isPanelVisible } from '../lib/usagePanel.svelte'
@@ -41,7 +41,8 @@
   // One window for the whole section. The trend used to have its own
   // 12/24/48/72h pill row while the cards above it were always all-time, so
   // the chart and the numbers beside it never described the same period.
-  let period = $state<Period>('24h')
+  let period = $state<Period>(storedPeriod('cache', '24h'))
+  $effect(() => rememberPeriod('cache', period))
   let autoRefresh = $state(false)
   let refreshTimer: ReturnType<typeof setInterval> | null = null
 
