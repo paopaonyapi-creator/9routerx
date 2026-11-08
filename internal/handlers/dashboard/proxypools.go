@@ -144,7 +144,7 @@ func (h *DashboardHandler) HandleCreateProxyPool(w http.ResponseWriter, r *http.
 		Type        string   `json:"type"`
 		NoProxy     string   `json:"noProxy"`
 		StrictProxy bool     `json:"strictProxy"`
-		IsActive    bool     `json:"isActive"`
+		IsActive    *bool    `json:"isActive"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid JSON")
@@ -175,7 +175,11 @@ func (h *DashboardHandler) HandleCreateProxyPool(w http.ResponseWriter, r *http.
 		StrictProxy: req.StrictProxy,
 	}
 
-	created, err := h.Repo.InsertProxyPool(poolData, req.IsActive)
+	// An absent isActive keeps the historical create default (active); only
+	// an explicit false — the form's Active switch flipped off — starts the
+	// pool inactive.
+	createActive := req.IsActive == nil || *req.IsActive
+	created, err := h.Repo.InsertProxyPool(poolData, createActive)
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
