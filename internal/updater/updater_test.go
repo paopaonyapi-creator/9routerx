@@ -941,3 +941,38 @@ func TestCheckUpdate_ManifestDigestPrecedence(t *testing.T) {
 		}
 	})
 }
+
+// The tray companion asset carries the same OS and arch substrings as the main
+// binary, and GitHub lists release assets alphabetically, so
+// 9routerx-tray-windows-amd64.exe comes BEFORE 9routerx-windows-amd64.exe.
+// The first-cut matcher returned the tray, "updated" a Windows install onto
+// it (the SHA256SUMS digest verified, being the tray's own), and left the
+// gateway replaced by a systray binary. This pins the matcher to the main
+// binary no matter where the tray asset sits in the list.
+func TestMatchReleaseAsset_SkipsTrayCompanion(t *testing.T) {
+	// Exact shape of the v1.1.1 release, in GitHub's alphabetical order.
+	assets := []releaseAsset{
+		{Name: "9routerx-darwin-amd64", BrowserDownloadURL: "url-darwin-amd64"},
+		{Name: "9routerx-darwin-arm64", BrowserDownloadURL: "url-darwin-arm64"},
+		{Name: "9routerx-linux-amd64", BrowserDownloadURL: "url-linux-amd64"},
+		{Name: "9routerx-linux-arm64", BrowserDownloadURL: "url-linux-arm64"},
+		{Name: "9routerx-tray-windows-amd64.exe", BrowserDownloadURL: "url-tray"},
+		{Name: "9routerx-windows-amd64.exe", BrowserDownloadURL: "url-windows"},
+		{Name: "SHA256SUMS.txt", BrowserDownloadURL: "url-sums"},
+	}
+
+	if url := matchReleaseAsset(assets, "windows", "amd64"); url != "url-windows" {
+		t.Errorf("matcher picked %q, want the main windows binary (not the tray)", url)
+	}
+	if url := matchReleaseAsset(assets, "linux", "amd64"); url != "url-linux-amd64" {
+		t.Errorf("matcher picked %q, want url-linux-amd64", url)
+	}
+	// The no-OS-match fallback must not land on the tray either.
+	bare := []releaseAsset{
+		{Name: "9routerx-tray-windows-amd64.exe", BrowserDownloadURL: "url-tray"},
+		{Name: "SHA256SUMS.txt", BrowserDownloadURL: "url-sums"},
+	}
+	if url := matchReleaseAsset(bare, "plan9", "amd64"); url != "" {
+		t.Errorf("tray-only asset list matched %q; the tray must never self-update", url)
+	}
+}

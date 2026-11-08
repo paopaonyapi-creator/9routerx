@@ -507,7 +507,16 @@ func archAliases(archKey string) []string {
 	}
 }
 
-// matchReleaseAsset finds the best matching asset URL for target OS and Architecture.
+// matchReleaseAsset finds the best matching asset URL for target OS and
+// Architecture.
+//
+// Tray companion assets ("9routerx-tray-<os>-<arch>.exe") are never a match:
+// they carry the same OS and arch substrings as the main binary, and GitHub
+// lists release assets alphabetically, so the tray sorts before
+// 9routerx-windows-amd64.exe — the first-cut matcher "updated" a Windows
+// install onto the tray binary, digest-verified against the tray's own
+// SHA256SUMS entry so nothing complained. The tray never self-updates through
+// this path, so it can never be the right answer here.
 func matchReleaseAsset(assets []releaseAsset, targetOS, targetArch string) string {
 	osKey := strings.ToLower(targetOS)
 	archNames := archAliases(targetArch)
@@ -516,6 +525,9 @@ func matchReleaseAsset(assets []releaseAsset, targetOS, targetArch string) strin
 		name := strings.ToLower(asset.Name)
 		// Check OS match
 		if !strings.Contains(name, osKey) {
+			continue
+		}
+		if isTrayAsset(name) {
 			continue
 		}
 		// Check Arch match
@@ -529,11 +541,22 @@ func matchReleaseAsset(assets []releaseAsset, targetOS, targetArch string) strin
 	// Fallback to first non-checksum asset
 	for _, asset := range assets {
 		name := strings.ToLower(asset.Name)
+		if isTrayAsset(name) {
+			continue
+		}
 		if !strings.HasSuffix(name, ".sha256") && !strings.HasSuffix(name, ".md5") && !strings.HasSuffix(name, ".txt") {
 			return asset.BrowserDownloadURL
 		}
 	}
 	return ""
+}
+
+// isTrayAsset reports whether name belongs to the tray companion binary: the
+// dash form is the release asset spelling, the underscore and trailing forms
+// cover any future spelling that still carries the word.
+func isTrayAsset(name string) bool {
+	return strings.Contains(name, "-tray-") || strings.Contains(name, "_tray_") ||
+		strings.Contains(name, "tray-") || strings.Contains(name, "tray.")
 }
 
 // selfExecutable resolves the binary this process runs, so the tests can point
