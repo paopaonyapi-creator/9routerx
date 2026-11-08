@@ -98,12 +98,12 @@ func exportBundle(cCtx *cli.Context) error {
 		}
 		fmt.Println("Bundle encrypted with ROUTER_MASTER_KEY.")
 	} else {
-		fmt.Println("⚠️  No ROUTER_MASTER_KEY configured: the bundle is PLAINTEXT and contains provider credentials. Store it securely or set the key and re-export.")
+		fmt.Println("[WARN] No ROUTER_MASTER_KEY configured: the bundle is PLAINTEXT and contains provider credentials. Store it securely or set the key and re-export.")
 	}
 	if err := writeBundleFile(outPath, plain); err != nil {
 		return err
 	}
-	fmt.Printf("✅ Bundle exported to %s\n", outPath)
+	fmt.Printf("[OK] Bundle exported to %s\n", outPath)
 	return nil
 }
 
@@ -126,7 +126,7 @@ func importBundle(cCtx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("import failed: %w", err)
 	}
-	fmt.Println("✅ Bundle imported:")
+	fmt.Println("[OK] Bundle imported:")
 	fmt.Println(report.String())
 	return nil
 }

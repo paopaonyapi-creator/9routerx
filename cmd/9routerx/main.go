@@ -90,7 +90,7 @@ func main() {
 					fmt.Printf("9routerx version %s (%s/%s)\n", info.CurrentVersion, info.OS, info.Arch)
 					fmt.Printf("Latest version: %s\n", info.LatestVersion)
 					if info.HasUpdate {
-						fmt.Printf("\n🚀 NEW UPDATE AVAILABLE! (%s)\nNotes: %s\nRun '9routerx update' to install.\n", info.LatestVersion, info.ReleaseNotes)
+						fmt.Printf("\n[UPDATE] v%s available — run '9routerx update'\nNotes: %s\n", info.LatestVersion, info.ReleaseNotes)
 					} else {
 						fmt.Println("App is up to date.")
 					}
@@ -114,7 +114,7 @@ func main() {
 					if err := updater.PerformSelfUpdate(info.DownloadURL, info.SHA256); err != nil {
 						return fmt.Errorf("update failed: %w", err)
 					}
-					fmt.Println("✅ 9routerx updated successfully!")
+					fmt.Println("[OK] 9routerx updated successfully!")
 					return nil
 				},
 			},
@@ -142,7 +142,7 @@ func main() {
 							if err := backup.RestoreDatabase(cCtx.Context, repo, filePath, dashH.ImportDatabaseJSON); err != nil {
 								return fmt.Errorf("restore failed: %w", err)
 							}
-							fmt.Printf("✅ Database successfully restored from %s\n", filePath)
+							fmt.Printf("[OK] Database successfully restored from %s\n", filePath)
 							return nil
 						},
 					},
@@ -163,7 +163,7 @@ func main() {
 							if err != nil {
 								return fmt.Errorf("backup failed: %w", err)
 							}
-							fmt.Printf("✅ Backup created successfully:\n  SQLite: %s\n  JSON:   %s\n  Size:   %d bytes\n",
+							fmt.Printf("[OK] Backup created successfully:\n  SQLite: %s\n  JSON:   %s\n  Size:   %d bytes\n",
 								res.SQLitePath, res.JSONPath, res.SizeBytes)
 							return nil
 						},
