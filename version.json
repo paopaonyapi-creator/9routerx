@@ -1,5 +1,5 @@
 {
   "downloadUrl": "https://github.com/yanstd888/9routerx/releases/latest",
-  "latestVersion": "1.0.0",
+  "latestVersion": "1.1.0",
   "releaseNotes": "v1.0.0: first 9RouterX release — fork of 9router-go (luqman-v1, upstream decolua/9router) with the FASE 0-10 additions and the total rebranding: full 9RouterX identity, per-key governance, token saver, security log, free-tier live tracking, routing strategies (cache-optimized, auto, quota-weighted, reset-aware), 3-tier circuit breaker, GCF compression, Telegram + multi-target webhooks, teams billing, MCP server, A2A protocol, config bundle sync, web executors, compliance audit log, TLS stealth with mandatory alerts."
 }

@@ -9,16 +9,36 @@ Release history up to the fork point is archived in the upstream repo's
 
 ## [Unreleased]
 
+- Release sections carry the `v` prefix (`## [v1.0.0]`), matching what the
+  release workflow's notes extraction and the dashboard changelog both expect;
+  the pending-fragment splice now lands under this Unreleased heading instead
+  of above the file title.
+
+## [v1.1.0] - 2026-11-08
+
+### Added
+
+- **Interactive CLI menu** — bare `9routerx` on a real terminal now shows an
+  arrow-key picker (Bubble Tea + lipgloss, MIT; highlight uses the dashboard
+  accent `#2f5bd3`): ↑/↓ or j/k navigate, Enter selects, q/Esc/Ctrl+C quit.
+  Number keys `1`-`6` with `0` exit keep the old direct-select behaviour and
+  Enter still defaults to item 1 (open dashboard). Pipe/CI/service stdin
+  automatically falls back to the plain numbered menu, exactly as before, and
+  the default port line in the header is `http://127.0.0.1:20128`.
+
 ### Changed
 
 - BREAKING-ish: default port 888 → 20128 for ecosystem compatibility with
   9router / 9router-go; set `PORT=888` to keep the old behavior.
 - docs: npm install as primary install path; npm badges
 - docs: acknowledgments table with live star badges; attribution fixes (headroom source, frontend deps)
-- Release sections carry the `v` prefix (`## [v1.0.0]`), matching what the
-  release workflow's notes extraction and the dashboard changelog both expect;
-  the pending-fragment splice now lands under this Unreleased heading instead
-  of above the file title.
+- CLI output is emoji-free: the update notice prints as
+  `[UPDATE] v<x.y.z> available — run '9routerx update'`, success lines print
+  `[OK]`, warnings print `[WARN]`.
+- Errors from menu actions (start against a busy port, failed stop) render
+  inside the interactive picker instead of being lost on the redrawn screen.
+- Binaries grow ~1 MB from the TUI dependency (windows-amd64 `-ldflags "-s -w"`:
+  49.98 MB → 51.04 MB).
 
 ## [v1.0.0] - 2026-11-06
 
@@ -49,4 +69,5 @@ Forked from 9router-go (luqman-v1), upstream decolua/9router — attribution and
 - **BREAKING**: product name `9router-go` becomes **9RouterX** — repository links now point at `github.com/yanstd888/9routerx`, the binary and CLI commands are `9routerx`, the module path is `9routerx/proxy`, and installers are fetched from `raw.githubusercontent.com/yanstd888/9routerx`.
 - **BREAKING**: default gateway port `20130` → `888`. Migration: set `PORT=20130` in your `.env` to keep the old port.
 
+[1.1.0]: https://github.com/yanstd888/9routerx/releases/tag/v1.1.0
 [1.0.0]: https://github.com/yanstd888/9routerx/releases/tag/v1.0.0
