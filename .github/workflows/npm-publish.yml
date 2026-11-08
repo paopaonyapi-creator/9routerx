@@ -193,7 +193,7 @@ jobs:
             const scope = process.env.SCOPE;
             const v = process.env.VERSION;
             const plat = (os, a) => "@" + scope + "/9routerx-" + os + "-" + a;
-            const p = { name: "9routerx", version: v, description: "9RouterX — 9R Next Go Generation: local AI gateway (installs the right platform binary)", bin: { "9routerx": "bin/launcher.js" }, optionalDependencies: { [plat("win32", "x64")]: v, [plat("linux", "x64")]: v, [plat("linux", "arm64")]: v, [plat("darwin", "x64")]: v, [plat("darwin", "arm64")]: v }, license: "MIT", repository: { type: "git", url: "git+https://github.com/yanstd888/9routerx.git" }, author: "Muhammad Dian (yanstd888)", keywords: ["ai", "gateway", "router", "llm", "proxy"], engines: { node: ">=18" }, publishConfig: { access: "public" } };
+            const p = { name: "9routerx", version: v, description: "9RouterX — 9R Next Go Generation: local AI gateway (installs the right platform binary)", bin: { "9routerx": "bin/launcher.js" }, files: ["bin"], optionalDependencies: { [plat("win32", "x64")]: v, [plat("linux", "x64")]: v, [plat("linux", "arm64")]: v, [plat("darwin", "x64")]: v, [plat("darwin", "arm64")]: v }, license: "MIT", repository: { type: "git", url: "git+https://github.com/yanstd888/9routerx.git" }, author: "Muhammad Dian (yanstd888)", keywords: ["ai", "gateway", "router", "llm", "proxy"], engines: { node: ">=18" }, publishConfig: { access: "public" } };
             require("fs").writeFileSync("pkg/9routerx/package.json", JSON.stringify(p, null, 2) + "\n");
           '
           # The launcher embeds the scope resolved above (@NPM_SCOPE@) so it
