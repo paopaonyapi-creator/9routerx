@@ -2,6 +2,7 @@
 package providers
 
 import (
+	"sort"
 	"strings"
 	"sync"
 )
@@ -488,6 +489,78 @@ func isCatalogFreeModel(providerID, modelID string) bool {
 	}
 	_, ok := freeModelIDsByProvider[ResolveAlias(providerID)][modelID]
 	return ok
+}
+
+// FreeRegimeFor reports the documented regime of a provider's free tier, as
+// the shipped catalogue records it ("recurring-daily", "recurring-monthly",
+// "recurring-credit", "recurring-uncapped", "one-time-initial", "keyless").
+//
+// This is the hook the regime-aware recovery scheduler reads: WHEN a free
+// quota comes back is a property of the tier, the catalogue is where that
+// property is documented, so the recovery math never guesses. An exact
+// (provider, model) entry wins; without one, the provider's first catalogued
+// entry stands in — a provider's rows share one regime in every catalogue
+// block, so the fallback is safe. Discontinued entries do not count (they
+// never granted access anyway). ok is false when nothing is catalogued.
+func FreeRegimeFor(providerID, modelID string) (string, bool) {
+	if providerID == "" {
+		return "", false
+	}
+	freeCatalogOnce.Do(buildFreeCatalog)
+
+	lookup := func(pid, mid string) (freeRegime, bool) {
+		if mid != "" {
+			if _, listed := freeModelIDsByProvider[pid][mid]; listed {
+				for _, entry := range freeModelCatalog {
+					if entry.Provider == pid && entry.ModelID == mid && freeBudgetGrantsAccess(entry.FreeType) {
+						return entry.FreeType, true
+					}
+				}
+			}
+		}
+		for _, entry := range freeModelCatalog {
+			if entry.Provider == pid && freeBudgetGrantsAccess(entry.FreeType) {
+				return entry.FreeType, true
+			}
+		}
+		return "", false
+	}
+
+	if regime, ok := lookup(providerID, modelID); ok {
+		return string(regime), true
+	}
+	if alias := ResolveAlias(providerID); alias != "" && alias != providerID {
+		if regime, ok := lookup(alias, modelID); ok {
+			return string(regime), true
+		}
+	}
+	return "", false
+}
+
+// FreeCatalogProviders lists every provider id the shipped catalogue covers —
+// the roster the health endpoint and the fallback chain enumerate.
+func FreeCatalogProviders() []string {
+	freeCatalogOnce.Do(buildFreeCatalog)
+	out := make([]string, 0, len(providersWithFreeModels))
+	for pid := range providersWithFreeModels {
+		out = append(out, pid)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// FreeCatalogModelCounts maps every catalogued provider id to the number of
+// free models the catalogue lists for it. Read-only copy.
+func FreeCatalogModelCounts() map[string]int {
+	freeCatalogOnce.Do(buildFreeCatalog)
+	out := make(map[string]int, len(providersWithFreeModels))
+	for _, entry := range freeModelCatalog {
+		if !freeBudgetGrantsAccess(entry.FreeType) {
+			continue
+		}
+		out[entry.Provider]++
+	}
+	return out
 }
 
 // FreeModelCandidate is the subset of a model entry the free check reads.

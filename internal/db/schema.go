@@ -704,6 +704,45 @@ var keiRouterTables = []tableDef{
 			"CREATE INDEX IF NOT EXISTS idx_wes_provider ON webexecSessions(provider)",
 		},
 	},
+	// Free-tier resilience suite (regime-aware auto-recovery): one row per
+	// provider-level limit event. A provider that hit its free quota is
+	// parked until the regime's expected reset (midnight for a daily tier,
+	// month start for a monthly one, a short backoff for a keyless gate) or
+	// until a real success lifts the wait early. resetAt '' marks an
+	// open-ended wait for the credit/one-time regimes that never recover on
+	// a clock. status: cooling -> recovered (success or reset passed) —
+	// rows are never deleted, so the dashboard can show the last condition.
+	{
+		name: "freeTierRecovery",
+		columns: [][2]string{
+			{"id", "INTEGER PRIMARY KEY AUTOINCREMENT"},
+			{"provider", "TEXT NOT NULL"},
+			{"model", "TEXT DEFAULT ''"},
+			{"errorKind", "TEXT NOT NULL DEFAULT ''"},
+			{"regime", "TEXT DEFAULT ''"},
+			{"eventAt", "TEXT NOT NULL"},
+			{"resetAt", "TEXT DEFAULT ''"},
+			{"attempts", "INTEGER NOT NULL DEFAULT 1"},
+			{"lastError", "TEXT DEFAULT ''"},
+			{"status", "TEXT NOT NULL DEFAULT 'cooling'"},
+			{"recoveredAt", "TEXT DEFAULT ''"},
+		},
+		indexes: []string{
+			"CREATE INDEX IF NOT EXISTS idx_ftr_provider_status ON freeTierRecovery(provider, status, resetAt)",
+		},
+	},
+	// Free-provider health snapshot: the per-provider 24h outcome ring the
+	// health endpoint and the fallback chain's default ordering read,
+	// persisted as one JSON blob per provider so a restart keeps the score.
+	// Written by the recovery scheduler's flush pass, not per request.
+	{
+		name: "freeProviderHealth",
+		columns: [][2]string{
+			{"provider", "TEXT PRIMARY KEY"},
+			{"outcomes", "TEXT NOT NULL DEFAULT '[]'"},
+			{"updatedAt", "TEXT NOT NULL DEFAULT ''"},
+		},
+	},
 }
 
 // usageLedgerTables are Go-only tables backing the ledger retention in

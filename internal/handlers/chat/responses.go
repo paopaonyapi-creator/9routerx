@@ -212,6 +212,16 @@ func (h *ChatHandler) newResponsesContext(r *http.Request, requestedModel string
 // client, and a Responses client is never one.
 func (h *ChatHandler) handleResponsesSingleModel(ctx context.Context, w http.ResponseWriter, preparedReq map[string]any, modelInfo *ModelInfo, isStream bool) {
 	cw := newCommittedResponseWriter(w)
+	// Pristine snapshot for the free fallback chain, taken before the model
+	// rewrite mutates the map. Same arm check as the other lanes: an armed
+	// free provider pays one marshal, everyone else pays nothing.
+	requestedModel, _ := preparedReq["model"].(string)
+	var chainSource []byte
+	if h.freeChainArmed(modelInfo.Provider) {
+		if raw, err := json.Marshal(preparedReq); err == nil {
+			chainSource = raw
+		}
+	}
 	preparedReq["model"] = h.wireModelForNode(modelInfo.Provider, modelInfo.Model)
 	finalBody, err := json.Marshal(preparedReq)
 	if err != nil {
@@ -226,6 +236,13 @@ func (h *ChatHandler) handleResponsesSingleModel(ctx context.Context, w http.Res
 	if cw.IsCommitted() {
 		log.Error("chat", "upstream error after headers committed", "error", result)
 		return
+	}
+	// Free-tier fallback chain, Responses lane: same trigger and same
+	// marking as the chat lane.
+	if h.freeChainArmed(modelInfo.Provider) {
+		if chainErr := h.runFreeFallbackChain(ctx, cw, chainSource, modelInfo.Provider, modelInfo.Model, requestedModel, isStream, false, responsesEndpoint, result); chainErr == nil {
+			return
+		}
 	}
 	var ue *upstreamError
 	if errors.As(result, &ue) {

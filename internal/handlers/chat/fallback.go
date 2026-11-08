@@ -121,6 +121,7 @@ func (h *ChatHandler) handleAccountFallback(
 				apiKey = "public"
 			}
 			proxyPoolID := h.ResolveProviderProxyPoolID(provider)
+			attemptStart := time.Now()
 			if err := h.tryForwardWithConnection(forwardRequestParams{
 				Ctx: ctx, W: w, Provider: provider, Model: model,
 				ConnectionID: "default", ConnData: &ConnectionData{APIKey: apiKey, ProxyPoolID: proxyPoolID}, Body: body, Attempts: 1,
@@ -129,8 +130,10 @@ func (h *ChatHandler) handleAccountFallback(
 				// Same contract as the multi-connection loop's return: a
 				// free-tier refusal leaves this path as the classified
 				// answer, not the upstream body verbatim.
+				h.recordFreeResilienceOutcome(provider, model, err, time.Since(attemptStart).Milliseconds())
 				return opencodeClosureError(provider, model, err)
 			}
+			h.recordFreeResilienceOutcome(provider, model, nil, time.Since(attemptStart).Milliseconds())
 			return nil
 		}
 		observ.IncFallback(provider, model, observ.FallbackReasonNoConnection)
@@ -233,6 +236,9 @@ func (h *ChatHandler) handleAccountFallback(
 			IsStream: isStream, TranslateResponse: translateResponse, Endpoint: endpoint,
 		}); err == nil {
 			RecordAttemptFromContext(ctx, connObj.ID, connObjName(connObj), provider, model, 200, nil, time.Since(attemptStart).Milliseconds())
+			// Free-tier resilience: a success feeds the health score and
+			// lifts any provider-level cooldown early (smart recovery).
+			h.recordFreeResilienceOutcome(provider, model, nil, time.Since(attemptStart).Milliseconds())
 			if sessionID := handlerutil.GetSessionID(ctx); sessionID != "" && affinityEligible {
 				h.getSessionAffinity().Bind(provider, model, sessionID, connObj.ID)
 			}
@@ -241,6 +247,10 @@ func (h *ChatHandler) handleAccountFallback(
 			lastErr = err
 			observ.IncFallback(provider, model, observ.FallbackReasonUpstreamError)
 			RecordAttemptFromContext(ctx, connObj.ID, connObjName(connObj), provider, model, 0, err, time.Since(attemptStart).Milliseconds())
+			// Free-tier resilience: a failure feeds the health score and,
+			// when the classifier calls it a limit, opens the provider-level
+			// cooldown the fallback chain skips.
+			h.recordFreeResilienceOutcome(provider, model, err, time.Since(attemptStart).Milliseconds())
 			var ue *upstreamError
 			if errors.As(lastErr, &ue) {
 				if ue.StatusCode == http.StatusTooManyRequests || ue.StatusCode == http.StatusUnauthorized || ue.StatusCode == http.StatusForbidden {

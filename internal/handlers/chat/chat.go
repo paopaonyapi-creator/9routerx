@@ -262,6 +262,16 @@ func (h *ChatHandler) handleSingleModel(ctx context.Context, w http.ResponseWrit
 			log.Error("chat", "upstream error after headers committed", "error", result)
 			return
 		}
+		// Free-tier fallback chain: the provider's own accounts are
+		// exhausted, so a free-tier refusal here is a provider-level
+		// condition. Walk the healthy free providers that serve the same
+		// model. `body` is the client's pristine bytes, so each candidate
+		// gets its own model rewrite and jailbreak resolution.
+		if h.freeChainArmed(modelInfo.Provider) {
+			if chainErr := h.runFreeFallbackChain(ctx, cw, body, modelInfo.Provider, modelInfo.Model, requestedModel, isStream, translateResponse, "/v1/chat/completions", result); chainErr == nil {
+				return
+			}
+		}
 		var ue *upstreamError
 		if errors.As(result, &ue) {
 			cw.Header().Set("Content-Type", "application/json")
@@ -444,6 +454,16 @@ func (h *ChatHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 // handleMessagesSingleModel forwards a translated Claude request for a single model.
 func (h *ChatHandler) handleMessagesSingleModel(ctx context.Context, w http.ResponseWriter, translatedReq map[string]any, modelInfo *ModelInfo, isStream bool, translateResponse bool) {
 	cw := newCommittedResponseWriter(w)
+	// Pristine snapshot for the free fallback chain, taken before the model
+	// rewrite and the jailbreak injection mutate the map below. Only armed
+	// when the chain could actually run for this provider, so the common
+	// paid-provider turn pays nothing for it.
+	var chainSource []byte
+	if h.freeChainArmed(modelInfo.Provider) {
+		if raw, err := json.Marshal(translatedReq); err == nil {
+			chainSource = raw
+		}
+	}
 	// The client's model id is the jailbreak key; rewrite the body to the
 	// resolved upstream model first, then inject against the original id.
 	requestedModel, _ := translatedReq["model"].(string)
@@ -460,6 +480,15 @@ func (h *ChatHandler) handleMessagesSingleModel(ctx context.Context, w http.Resp
 		if cw.IsCommitted() {
 			log.Error("chat", "upstream error after headers committed", "error", result)
 			return
+		}
+		// Free-tier fallback chain, Claude lane. Only for translated bodies:
+		// a Claude-native request cannot be re-spoken to a provider that
+		// does not serve the Messages wire, and translateResponse is false
+		// exactly when the provider is Claude-native.
+		if translateResponse && h.freeChainArmed(modelInfo.Provider) {
+			if chainErr := h.runFreeFallbackChain(ctx, cw, chainSource, modelInfo.Provider, modelInfo.Model, requestedModel, isStream, translateResponse, "/v1/v1/messages", result); chainErr == nil {
+				return
+			}
 		}
 		var ue *upstreamError
 		if errors.As(result, &ue) {

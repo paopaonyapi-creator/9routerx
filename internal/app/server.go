@@ -17,6 +17,7 @@ import (
 	"9routerx/proxy/internal/a2a"
 	"9routerx/proxy/internal/config"
 	"9routerx/proxy/internal/db"
+	"9routerx/proxy/internal/freeresilience"
 	"9routerx/proxy/internal/handlers/chat"
 	"9routerx/proxy/internal/mcpserver"
 	"9routerx/proxy/internal/notifications"
@@ -152,6 +153,14 @@ func ProvideServer(p ServerParams) *http.Server {
 					log.Printf("[freetier] seeding catalog budgets failed: %v", err)
 				}
 				db.StartFreeTierResetLoop(shutdown.Context(), p.Repo)
+				// Free-tier resilience suite: the recovery scheduler expires
+				// cooldowns whose reset passed (the provider rejoins rotation
+				// without a restart) and flushes the health outcome rings to
+				// SQLite. The tracker lives on the engine's chat handler —
+				// the instance the request path actually uses.
+				if p.ChatHandler != nil && p.ChatHandler.FreeResilience != nil {
+					freeresilience.StartScheduler(shutdown.Context(), p.ChatHandler.FreeResilience, freeresilience.DefaultSchedulerInterval)
+				}
 			}
 			// FASE 10.0: the web-executor session pool's health job. It
 			// publishes itself, so the dashboard's /api/webexec endpoints

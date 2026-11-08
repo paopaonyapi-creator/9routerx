@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"9routerx/proxy/internal/db"
+	"9routerx/proxy/internal/freeresilience"
 	"9routerx/proxy/internal/handlers/shared"
 	"9routerx/proxy/internal/middleware"
 	"9routerx/proxy/internal/models"
@@ -51,9 +52,15 @@ type ChatHandler struct {
 	// provider plus one semaphore per provider:account:proxy. In-memory and
 	// process-local — the persisted per-connection model locks stay the
 	// per-account layer, this one is per-provider and fast.
-	Resilience  *resilience.Controller
-	stickyMu    sync.Mutex
-	stickyState map[string]*comboStickyState
+	Resilience *resilience.Controller
+	// FreeResilience is the free-tier resilience suite: the free-provider
+	// fallback chain (B.1), the regime-aware cooldown state (B.2) and the
+	// health score the chain's default ordering reads (B.3). Nil-safe: every
+	// access goes through a nil check, so a handler built without a repo
+	// (the version endpoint) simply never runs the suite.
+	FreeResilience *freeresilience.Tracker
+	stickyMu       sync.Mutex
+	stickyState    map[string]*comboStickyState
 
 	// deprecationCache throttles kv writes when a provider retires a model:
 	// every request at a dead combo entry arrives as a fresh 410, and each

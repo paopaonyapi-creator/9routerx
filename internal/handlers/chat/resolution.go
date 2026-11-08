@@ -3,6 +3,7 @@ package chat
 
 import (
 	"9routerx/proxy/internal/db"
+	"9routerx/proxy/internal/freeresilience"
 	"9routerx/proxy/internal/handlers/shared"
 	"9routerx/proxy/internal/middleware"
 	"9routerx/proxy/internal/promptcache"
@@ -69,6 +70,20 @@ func NewChatHandler(repo *db.Repo, ts ...*shared.TokenSaverConfig) *ChatHandler 
 	// Provider-level admission control. Defaults only: the breaker is
 	// per-provider and the semaphore per provider:account:proxy, so neither
 	// needs per-connection configuration to be useful.
+	//
+	// The free-tier resilience suite shares the repo: the cooldown rows and
+	// the health rings it persists live in the same SQLite file. A handler
+	// without a repo (the version endpoint's) gets a tracker with no store —
+	// state stays in memory and no background pass ever runs for it.
+	var freeCfg freeresilience.FallbackConfig
+	var freeTracker *freeresilience.Tracker
+	if repo != nil {
+		freeCfg = freeresilience.FallbackConfigFromEnv()
+		freeTracker = freeresilience.NewTracker(freeCfg, repo, func(provider, model string) string {
+			regime, _ := providers.FreeRegimeFor(provider, model)
+			return regime
+		})
+	}
 	return &ChatHandler{
 		Repo: repo,
 		Client: &http.Client{
@@ -79,6 +94,7 @@ func NewChatHandler(repo *db.Repo, ts ...*shared.TokenSaverConfig) *ChatHandler 
 		SemanticCache:   sc,
 		PromptCache:     pc,
 		Resilience:      resilience.DefaultController(),
+		FreeResilience:  freeTracker,
 		stickyState:     make(map[string]*comboStickyState),
 		SessionAffinity: NewSessionAffinityStore(10000, 2*time.Hour),
 	}
