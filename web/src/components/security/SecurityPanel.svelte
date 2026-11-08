@@ -605,6 +605,17 @@
       required
     />
 
+    <!-- Validation and API failures set `error`, which used to render only at
+         the top of the panel — invisible behind this modal, so an empty name
+         looked like the button doing nothing. Shown here where the operator
+         is looking. -->
+    {#if error}
+      <p class="text-xs text-error flex items-center gap-1" role="alert">
+        <span class="material-symbols-outlined text-[14px]">error</span>
+        {error}
+      </p>
+    {/if}
+
     <div class="flex flex-col gap-1.5">
       <label for="policy-scope" class="text-sm font-medium text-text-main">Scope</label>
       <select
