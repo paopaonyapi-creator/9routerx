@@ -1,6 +1,6 @@
 <div align="center">
 
-![9RouterX — Local AI Router, LLM Gateway, and Token Saver Single Binary](docs/readme-hero.png)
+![9RouterX — Local AI Router, LLM Gateway, and Token Saver Single Binary](docs/readme-hero.gif)
 
 # 9RouterX — FREE AI Router & Token Saver (Single Binary)
 
