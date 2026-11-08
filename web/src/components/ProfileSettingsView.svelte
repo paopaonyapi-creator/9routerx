@@ -1,6 +1,6 @@
 <!-- 9RouterX — all source code port and modification by https://github.com/yanstd888/ — https://t.me/aiclub_id -->
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
+  import { onDestroy, onMount, untrack } from 'svelte'
   import { notifications } from '../lib/notifications'
   import {
     Check,
@@ -95,14 +95,17 @@
   }: Props = $props()
 
   // General Settings State
-  let requireLogin = $state(false)
-  // Whether the server has actually stated a requireLogin value. The backend
-  // leaves the key absent on a fresh database and enforces login there, so an
-  // absent field must NOT be echoed back as an explicit false on save — that
-  // is how saving a display preference once disabled the login gate. The
-  // toggle itself sets this flag: a flipped switch is an operator decision
-  // and always reaches the payload.
+  let requireLogin = $state(true)
   let requireLoginKnown = $state(false)
+  // Late hydration must not overwrite an operator's unsaved login choice.
+  let requireLoginEdited = false
+  let requireLoginRevision = 0
+
+  function hydrateRequireLogin(value: unknown) {
+    if (requireLoginEdited) return
+    requireLoginKnown = typeof value === 'boolean'
+    requireLogin = typeof value === 'boolean' ? value : true
+  }
   let sessionTimeout = $state('24h')
   let enableObservability = $state(false)
   let observabilityMode = $state<'full' | 'errors_only' | 'off'>('full')
@@ -307,15 +310,7 @@
 
   $effect(() => {
     if (settings) {
-      if ('requireLogin' in settings) {
-        requireLogin = !!settings.requireLogin
-        requireLoginKnown = true
-      } else {
-        // Absent means the backend default: login enforced. Show the switch
-        // in the state the server actually behaves as instead of a lie that
-        // one save could make true.
-        requireLogin = true
-      }
+      untrack(() => hydrateRequireLogin(settings.requireLogin))
       enableObservability = !!settings.enableObservability
       if (settings.observabilityMode === 'full' || settings.observabilityMode === 'errors_only' || settings.observabilityMode === 'off') {
         observabilityMode = settings.observabilityMode
@@ -360,12 +355,7 @@
     try {
       const s = await api.getSettings()
       if (s) {
-        if ('requireLogin' in s) {
-          requireLogin = !!s.requireLogin
-          requireLoginKnown = true
-        } else {
-          requireLogin = true
-        }
+        hydrateRequireLogin(s.requireLogin)
         enableObservability = !!s.enableObservability
         if (s.sessionTimeout) sessionTimeout = String(s.sessionTimeout)
         if (s.fallbackStrategy) fallbackStrategy = String(s.fallbackStrategy)
@@ -506,6 +496,8 @@
   }
 
   async function handleSaveAll() {
+    if (isSavingSettings) return
+    const loginRevision = requireLoginRevision
     isSavingSettings = true
     saveSuccess = false
     try {
@@ -542,6 +534,7 @@
       // The arrangement is a localStorage preference, so it is written only once
       // the settings it was edited alongside have been kept.
       if (usagePanelsDirty()) saveUsagePanels()
+      if (loginRevision === requireLoginRevision) requireLoginEdited = false
       saveSuccess = true
       showSaveHint = false
       if (saveHintTimer) clearTimeout(saveHintTimer)
@@ -884,6 +877,8 @@
           onChange={(val) => {
             requireLogin = val
             requireLoginKnown = true
+            requireLoginEdited = true
+            requireLoginRevision++
           }}
         />
       </div>
