@@ -1,0 +1,24 @@
+# ONE-OFF housekeeping workflow (branch tmp/deprecate, delete after the run).
+# Marks the leftover staging publish as deprecated. It never unpublishes.
+name: tmp-deprecate-stage
+on:
+  workflow_dispatch:
+
+jobs:
+  deprecate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deprecate 9routerx@0.0.0-stage (no unpublish)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          npm config set registry https://registry.npmjs.org/
+          npm whoami
+          npm deprecate 9routerx@0.0.0-stage "staging publish — use 1.0.0"
+          echo "--- versions ---"
+          npm view 9routerx versions
+          echo "--- dist-tags ---"
+          npm view 9routerx dist-tags
+          echo "--- deprecation notice ---"
+          npm view 9routerx@0.0.0-stage deprecated
