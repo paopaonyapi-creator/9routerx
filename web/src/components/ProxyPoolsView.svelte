@@ -253,6 +253,8 @@
   }
 
   async function handleSave() {
+    if (saving || importing) return
+    const poolToEdit = editingPool
     const payload = {
       name: formData.name.trim(),
       proxyUrl: formData.proxyUrl.trim(),
@@ -263,8 +265,8 @@
     if (!payload.name || !payload.proxyUrl) return
     saving = true
     try {
-      if (editingPool) {
-        await api.updateProxyPool(editingPool.id, payload)
+      if (poolToEdit) {
+        await api.updateProxyPool(poolToEdit.id, payload)
       } else {
         await api.createProxyPool(payload)
       }
@@ -275,7 +277,7 @@
       // more click away from a duplicate pool.
       saving = false
       closeFormModal()
-      notifications.success(editingPool ? 'Proxy pool updated' : 'Proxy pool created')
+      notifications.success(poolToEdit ? 'Proxy pool updated' : 'Proxy pool created')
     } catch (err) {
       console.error('Error saving proxy pool:', err)
       notifications.error(err instanceof Error ? err.message : 'Failed to save proxy pool')
