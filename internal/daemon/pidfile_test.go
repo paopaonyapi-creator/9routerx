@@ -80,6 +80,11 @@ func TestParseClaim(t *testing.T) {
 		want claim
 	}{
 		{
+			name: "executable path with spaces is preserved",
+			raw:  "20130 C:\\Program Files\\9RouterX\\9routerx.exe\n",
+			want: claim{pid: 20130, exePath: "C:\\Program Files\\9RouterX\\9routerx.exe"},
+		},
+		{
 			name: "pid with its executable verifies",
 			raw:  "20130 " + self + "\n",
 			want: claim{pid: 20130, exePath: self},

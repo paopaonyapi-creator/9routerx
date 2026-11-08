@@ -67,8 +67,14 @@ func installWindowsTask(exe string, args []string) (Info, error) {
 		create = append(create, "/ru", user)
 	}
 	create = append(create, "/f")
-	if _, err := run("schtasks.exe", create...); err != nil {
-		return Info{Backend: BackendWindowsTask, Exec: taskCmd}, err
+	var createErr error
+	if len(taskCmd) > 261 {
+		createErr = createWindowsTaskXML(exe, args)
+	} else {
+		_, createErr = run("schtasks.exe", create...)
+	}
+	if createErr != nil {
+		return Info{Backend: BackendWindowsTask, Exec: taskCmd}, createErr
 	}
 	if _, err := run("schtasks.exe", "/run", "/tn", windowsTaskName); err != nil {
 		return Info{Backend: BackendWindowsTask, Path: windowsTaskName, Exec: taskCmd, Enabled: true}, nil

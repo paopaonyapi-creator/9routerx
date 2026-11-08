@@ -41,6 +41,10 @@ func main() {
 		Name:  self,
 		Usage: "AI API proxy gateway with token saver features",
 		Flags: []cli.Flag{
+			&cli.IntFlag{Name: "port", Hidden: true},
+			&cli.StringFlag{Name: "data-dir", Hidden: true},
+			&cli.StringFlag{Name: "db-path", Hidden: true},
+			&cli.BoolFlag{Name: "service-process", Hidden: true},
 			&cli.BoolFlag{
 				Name:  "rtk",
 				Value: os.Getenv("RTK_ENABLED") != "false",
@@ -232,6 +236,12 @@ func main() {
 						Action: serviceInstall,
 					},
 					{
+						Name:   "take-over",
+						Usage:  "Replace an old gateway and matching legacy autostart, then verify 9RouterX",
+						Flags:  []cli.Flag{&cli.BoolFlag{Name: "yes", Usage: "approve reported stop, force fallback, autostart and service actions without prompts"}},
+						Action: serviceTakeOver,
+					},
+					{
 						Name:   "uninstall",
 						Usage:  "Remove the autostart entry",
 						Action: serviceUninstall,
@@ -259,6 +269,7 @@ func main() {
 				},
 			},
 		},
+		Before: applyServiceConfig,
 		Action: foregroundOrBackground,
 	}
 	app.Commands = append(app.Commands, syncBundleCommands()...)
@@ -282,6 +293,9 @@ func foregroundOrBackground(cCtx *cli.Context) error {
 	}
 	if cCtx.Bool(daemon.BackgroundName) {
 		return startDetached(cCtx)
+	}
+	if cCtx.Bool("service-process") {
+		return runServer(cCtx)
 	}
 	// On a terminal, bare `9routerx` offers the interface picker; without one
 	// (service unit, container, pipe) it boots the server as before.

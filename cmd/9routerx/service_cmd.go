@@ -20,7 +20,11 @@ func serviceInstall(cCtx *cli.Context) error {
 			return fmt.Errorf("service install: %w", err)
 		}
 	}
-	info, err := service.Install(forwardArgs(cCtx))
+	args, err := serviceArgs(cCtx)
+	if err != nil {
+		return err
+	}
+	info, err := service.Install(args)
 	if err != nil {
 		return err
 	}

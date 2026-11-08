@@ -90,7 +90,7 @@ func parseClaim(raw string) claim {
 	if len(fields) < 2 {
 		return claim{pid: pid}
 	}
-	return claim{pid: pid, exePath: fields[1]}
+	return claim{pid: pid, exePath: strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(raw), fields[0]))}
 }
 
 // owner reports whether the process behind this claim is still this daemon:

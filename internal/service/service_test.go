@@ -151,7 +151,7 @@ func TestRenderRunitRun(t *testing.T) {
 
 func TestRenderCronLine(t *testing.T) {
 	line := renderCronLine("/usr/local/bin/9routerx", []string{"--rtk=true"})
-	if !strings.HasPrefix(line, "@reboot /usr/local/bin/9routerx start --rtk=true ") {
+	if !strings.HasPrefix(line, "@reboot /usr/local/bin/9routerx --rtk=true start ") {
 		t.Errorf("cron line must reboot-start the daemon: %q", line)
 	}
 	if !strings.Contains(line, cronMarker) {

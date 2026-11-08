@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"9routerx/proxy/internal/constants"
@@ -36,7 +37,7 @@ func ownedCronLine(line string) bool {
 // renderCronLine renders the @reboot entry: cron has no supervisor, so it
 // launches the existing `start` daemon which detaches and owns its pid file.
 func renderCronLine(exe string, args []string) string {
-	return "@reboot " + commandLine(exe, append([]string{"start"}, args...)) + " " + cronMarker
+	return "@reboot " + commandLine(exe, append(slices.Clone(args), "start")) + " " + cronMarker
 }
 
 // renderAutostartDesktop renders the XDG autostart entry, a companion for
@@ -48,7 +49,7 @@ func renderAutostartDesktop(exe string, args []string) string {
 		"Type=Application\n" +
 		"Name=9routerx gateway\n" +
 		"Comment=9RouterX AI API proxy gateway\n" +
-		"Exec=" + commandLine(exe, append([]string{"start"}, args...)) + "\n" +
+		"Exec=" + commandLine(exe, append(slices.Clone(args), "start")) + "\n" +
 		"Terminal=false\n" +
 		"X-GNOME-Autostart-enabled=true\n" +
 		cronMarker + "\n"
