@@ -14,6 +14,22 @@ Release history up to the fork point is archived in the upstream repo's
   the pending-fragment splice now lands under this Unreleased heading instead
   of above the file title.
 
+## [v1.1.2] - 2026-11-08
+
+### Fixed
+
+- **Releases-API fallback could replace the gateway with the tray binary** —
+  caught by the v1.1.0→v1.1.1 release E2E. GitHub lists release assets
+  alphabetically, so `9routerx-tray-windows-amd64.exe` sorts before
+  `9routerx-windows-amd64.exe`, and the updater's asset matcher — which
+  substring-matches OS and arch — returned the tray. The install then
+  verified cleanly (the digest was the tray's own SHA256SUMS entry) and
+  replaced `9routerx.exe` with the systray companion. The matcher now skips
+  tray assets in both its scan and its non-checksum fallback, so the fallback
+  can only ever select the main binary, wherever the tray asset sits in the
+  list. The manifest path was never affected: `downloadUrls` names the main
+  binary per platform explicitly.
+
 ## [v1.1.1] - 2026-11-08
 
 ### Fixed
