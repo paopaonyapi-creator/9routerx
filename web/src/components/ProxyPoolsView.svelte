@@ -269,6 +269,11 @@
         await api.createProxyPool(payload)
       }
       await fetchProxyPools()
+      // The save has landed, so the in-flight guard must be released before
+      // closing: closeFormModal refuses while `saving` is still true, which
+      // used to leave the filled form open with Save enabled again — one
+      // more click away from a duplicate pool.
+      saving = false
       closeFormModal()
       notifications.success(editingPool ? 'Proxy pool updated' : 'Proxy pool created')
     } catch (err) {
