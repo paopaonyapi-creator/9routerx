@@ -124,6 +124,16 @@
   })
 </script>
 
+<!-- The payload modal is a hand-rolled overlay without the shared Modal's
+     escape stack, so its keyboard exit is wired here directly. The guard
+     keeps Escape inert while no detail is open, so it never fights the
+     other Escape handlers on this page. -->
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === 'Escape' && selectedDetail) closeDetail()
+  }}
+/>
+
 <UsageDashboard />
 
 {#if isPanelVisible('details.requests')}
