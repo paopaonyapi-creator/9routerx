@@ -28,12 +28,12 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:888',
-      '/v1': 'http://localhost:888',
-      '/usage': 'http://localhost:888',
-      '/translator': 'http://localhost:888',
-      '/debug': 'http://localhost:888',
-      '/admin': 'http://localhost:888',
+      '/api': 'http://localhost:20128',
+      '/v1': 'http://localhost:20128',
+      '/usage': 'http://localhost:20128',
+      '/translator': 'http://localhost:20128',
+      '/debug': 'http://localhost:20128',
+      '/admin': 'http://localhost:20128',
     },
   },
 })

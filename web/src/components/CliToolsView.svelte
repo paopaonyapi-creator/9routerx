@@ -50,8 +50,8 @@
   // Claude Code specific settings
   let autoCompactWindow = $state<'default' | '100k' | '150k' | '180k'>('default')
   let enable1mContext = $state(false)
-  // SSR fallback uses the Go default port 888; live origin wins on mount.
-  let localOrigin = $state(typeof window !== 'undefined' ? window.location.origin : 'http://localhost:888')
+  // SSR fallback uses the Go default port 20128; live origin wins on mount.
+  let localOrigin = $state(typeof window !== 'undefined' ? window.location.origin : 'http://localhost:20128')
   onMount(() => {
     if (typeof window !== 'undefined') {
       localOrigin = window.location.origin
@@ -174,7 +174,7 @@
       configType: 'mitm',
       instructions: [
         'Antigravity MITM intercepts Google Cloud Code PA traffic transparently.',
-        `Point HTTP_PROXY or system proxy to 9RouterX on port 888.`,
+        `Point HTTP_PROXY or system proxy to 9RouterX on port 20128.`,
         'All tools with _ide suffixes will be seamlessly uncloaked and routed to configured connections.',
       ],
     },

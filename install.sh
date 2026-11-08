@@ -59,4 +59,4 @@ info "installed to $BINDIR/9routerx"
 echo
 info "start it with:"
 echo "       9routerx"
-echo "Dashboard: http://localhost:888 (defaults: port 888, data ~/.9router)"
+echo "Dashboard: http://localhost:20128 (defaults: port 20128, data ~/.9router)"

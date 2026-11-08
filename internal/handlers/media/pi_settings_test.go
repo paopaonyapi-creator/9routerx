@@ -83,7 +83,7 @@ func TestPiSettingsGet(t *testing.T) {
 		}
 	})
 
-	t.Run("has9Router also reads the upstream default port", func(t *testing.T) {
+	t.Run("has9Router also reads the ecosystem default port", func(t *testing.T) {
 		piTestHome(t)
 		piWriteConfig(t, filepath.Join(".pi", "models.json"),
 			`{"providers":{"custom":{"baseUrl":"http://127.0.0.1:20128/v1"}}}`)
@@ -91,11 +91,11 @@ func TestPiSettingsGet(t *testing.T) {
 		NewPiHandler(nil).HandleGet(rec, httptest.NewRequest(http.MethodGet, "/api/cli-tools/pi-settings", nil))
 
 		if body := piBody(t, rec); body["has9Router"] != true {
-			t.Fatalf("expected has9Router via the 20128 fallback, got %v", body)
+			t.Fatalf("expected has9Router via the 20128 default, got %v", body)
 		}
 	})
 
-	t.Run("has9Router reads the current and the previous default port", func(t *testing.T) {
+	t.Run("has9Router reads the previous and the legacy default port", func(t *testing.T) {
 		piTestHome(t)
 		piWriteConfig(t, filepath.Join(".pi", "models.json"),
 			`{"providers":{"custom":{"baseUrl":"http://127.0.0.1:888/v1"}}}`)
@@ -103,7 +103,7 @@ func TestPiSettingsGet(t *testing.T) {
 		NewPiHandler(nil).HandleGet(rec, httptest.NewRequest(http.MethodGet, "/api/cli-tools/pi-settings", nil))
 
 		if body := piBody(t, rec); body["has9Router"] != true {
-			t.Fatalf("expected has9Router via the 888 default, got %v", body)
+			t.Fatalf("expected has9Router via the previous 888 default, got %v", body)
 		}
 
 		piWriteConfig(t, filepath.Join(".pi", "models.json"),

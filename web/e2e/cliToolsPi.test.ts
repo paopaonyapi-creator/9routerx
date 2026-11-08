@@ -101,7 +101,7 @@ describe('CLI Tools page lists the pi / Oh My Pi agents (#165)', () => {
       // compiled into the bundle as a fallback for the empty case.
       expect(text).not.toContain('<your-9routerx-api-key>')
       expect(text).toContain(seededKey)
-      expect(text).not.toContain('localhost:888')
+      expect(text).not.toContain('localhost:20128')
     })
   }
 

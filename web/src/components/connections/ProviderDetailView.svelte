@@ -2009,7 +2009,7 @@
 
   function dashboardOrigin(): string {
     if (typeof window !== 'undefined' && window.location?.origin) return window.location.origin
-    return 'http://localhost:888'
+    return 'http://localhost:20128'
   }
 
   function openGenericOAuth() {

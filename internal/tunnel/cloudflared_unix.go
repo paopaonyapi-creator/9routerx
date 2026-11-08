@@ -27,7 +27,7 @@ func configureDetached(cmd *exec.Cmd) {
 // The PID file only covers the process this binary started. A tunnel left
 // running by the upstream Node binary, or by an earlier run whose PID file was
 // lost, still holds the port and the origin — and the new tunnel cannot bind.
-// The regex boundary keeps :888 from matching :8880 or :9888.
+// The regex boundary keeps :20128 from matching :201280 or :201281.
 func killCloudflaredByPort(port int) {
 	if port <= 0 {
 		return

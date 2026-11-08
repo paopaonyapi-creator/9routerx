@@ -34,5 +34,5 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=builder /app/9routerx /usr/local/bin/9routerx
-EXPOSE 888
+EXPOSE 20128
 ENTRYPOINT ["9routerx"]

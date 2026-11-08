@@ -80,15 +80,15 @@ Configure a data directory and secrets, then start the binary:
 export DATA_DIR="$HOME/.9router"
 export JWT_SECRET="$(openssl rand -hex 32)" # use a persistent, protected value in deployments
 export INITIAL_PASSWORD='set-a-unique-local-password'
-PORT=888 ./9routerx
+PORT=20128 ./9routerx
 ```
 
-The server listens on `http://localhost:888` by default. Check both the gateway and the embedded dashboard:
+The server listens on `http://localhost:20128` by default. Check both the gateway and the embedded dashboard:
 
 ```bash
-curl -i http://127.0.0.1:888/health
-curl -i http://127.0.0.1:888/api/hello
-curl -I http://127.0.0.1:888/
+curl -i http://127.0.0.1:20128/health
+curl -i http://127.0.0.1:20128/api/hello
+curl -I http://127.0.0.1:20128/
 ```
 
 With a fresh, valid embedded bundle, `/` and client-side dashboard routes return the SPA; missing asset paths return 404 rather than silently becoming HTML. Browser dashboard routes may redirect to `/login` when login is required. The login/session API is separate from the client API-key routes; do not infer authorization from the fact that a page loads.

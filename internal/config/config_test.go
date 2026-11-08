@@ -81,8 +81,8 @@ func TestLoadConfigDefaults(t *testing.T) {
 
 	cfg := LoadConfig()
 
-	if cfg.Port != 888 { // Default port
-		t.Errorf("expected default port 888, got %d", cfg.Port)
+	if cfg.Port != 20128 { // Default port
+		t.Errorf("expected default port 20128, got %d", cfg.Port)
 	}
 	if cfg.InitialPassword != "" {
 		t.Errorf("expected no default password (operator must set INITIAL_PASSWORD), got %s", cfg.InitialPassword)
@@ -107,14 +107,37 @@ func TestLoadConfigInvalidPort(t *testing.T) {
 
 	os.Setenv("PORT", "abc") // invalid number
 	cfg := LoadConfig()
-	if cfg.Port != 888 {
-		t.Errorf("expected fallback port 888 for invalid port, got %d", cfg.Port)
+	if cfg.Port != 20128 {
+		t.Errorf("expected fallback port 20128 for invalid port, got %d", cfg.Port)
 	}
 
 	os.Setenv("PORT", "-1") // negative port
 	cfg2 := LoadConfig()
-	if cfg2.Port != 888 {
-		t.Errorf("expected fallback port 888 for negative port, got %d", cfg2.Port)
+	if cfg2.Port != 20128 {
+		t.Errorf("expected fallback port 20128 for negative port, got %d", cfg2.Port)
+	}
+}
+
+// TestLoadConfigLegacyPortEnvOverride guards the default-port change: an
+// operator whose .env still says PORT=888 (the pre-20128 default) keeps the
+// old behavior — the explicit env value wins over the new DefaultPort.
+func TestLoadConfigLegacyPortEnvOverride(t *testing.T) {
+	tempDir := t.TempDir()
+	tempDataDir := filepath.Join(tempDir, "data")
+	envContent := `PORT=888
+DATA_DIR=` + tempDataDir + `
+JWT_SECRET=legacy-port-jwt-secret
+`
+	envFile := filepath.Join(tempDir, ".env")
+	if err := os.WriteFile(envFile, []byte(envContent), 0600); err != nil {
+		t.Fatalf("failed to write test .env file: %v", err)
+	}
+
+	v := NewViperWithFile(envFile)
+	cfg := LoadConfigFromViper(v)
+
+	if cfg.Port != 888 {
+		t.Errorf("expected .env PORT=888 to win over the new 20128 default, got %d", cfg.Port)
 	}
 }
 
@@ -301,8 +324,8 @@ func TestProvideConfig(t *testing.T) {
 	if cfg == nil {
 		t.Fatal("expected ProvideConfig to return non-nil Config")
 	}
-	if cfg.Port != 888 {
-		t.Errorf("expected default port 888, got %d", cfg.Port)
+	if cfg.Port != 20128 {
+		t.Errorf("expected default port 20128, got %d", cfg.Port)
 	}
 }
 

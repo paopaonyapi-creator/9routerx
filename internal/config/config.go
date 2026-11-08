@@ -20,7 +20,10 @@ import (
 
 // DefaultPort is the port the gateway binds when PORT is unset. It lives here
 // so the validation error can name the fallback instead of a magic number.
-const DefaultPort = 888
+// It is 20128 to match the 9Router / 9router-go ecosystem default, making
+// 9routerX drop-in compatible: a client pointed at 9Router works against
+// 9routerX with zero config changes. Set PORT=888 to keep the old behavior.
+const DefaultPort = 20128
 
 // Config holds the proxy gateway configuration.
 type Config struct {
@@ -238,7 +241,7 @@ func LoadConfigFromViper(v *viper.Viper) *Config {
 // LoadConfig's silent fallbacks exist for the short-lived CLI helpers (menu,
 // tray, status) that only want a port number; the server itself must instead
 // stop and say which variable is wrong, so a typo'd PORT cannot quietly boot
-// the gateway on 888 or a db directory cannot silently fail to exist.
+// the gateway on the default port or a db directory cannot silently fail to exist.
 //
 // Each error names the variable and the fix, and is meant to be printed as a
 // single line — no stack, no dependency-graph dump.

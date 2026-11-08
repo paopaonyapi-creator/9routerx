@@ -394,7 +394,7 @@ const pageTemplate = `<!doctype html>
           <p class="landing-kicker">Quickstart</p>
           <h2 id="quickstart-title">Install, run, point your CLI</h2>
           <p class="landing-lede">
-            Defaults are enough for most people &mdash; port <code>888</code>, data in
+            Defaults are enough for most people &mdash; port <code>20128</code>, data in
             <code>~/.9router</code>, no flags needed.
           </p>
           <ol class="steps">
@@ -422,15 +422,15 @@ const pageTemplate = `<!doctype html>
                   <span class="install-label">alternative &mdash; container</span>
                 </div>
                 <pre><code>docker run -d --name 9routerx --restart unless-stopped \
-  -p 888:888 -v "$HOME/.9router:/data" \
-  -e PORT=888 -e DATA_DIR=/data \
+  -p 20128:20128 -v "$HOME/.9router:/data" \
+  -e PORT=20128 -e DATA_DIR=/data \
   yanstd888/9routerx:latest</code></pre>
               </div>
             </li>
             <li class="step">
               <h3>Run it</h3>
               <p>
-                Then open the dashboard at <code>http://localhost:888</code> &mdash; the default
+                Then open the dashboard at <code>http://localhost:20128</code> &mdash; the default
                 local password is <code>123456</code>; change it in Settings &rarr; Profile.
               </p>
               <div class="codeblock">
@@ -438,7 +438,7 @@ const pageTemplate = `<!doctype html>
                   <span class="install-label">shell</span>
                 </div>
                 <pre><code>9routerx
-# Dashboard: http://localhost:888 (Default password: 123456)</code></pre>
+# Dashboard: http://localhost:20128 (Default password: 123456)</code></pre>
               </div>
             </li>
             <li class="step">
@@ -452,7 +452,7 @@ const pageTemplate = `<!doctype html>
                 <div class="install-head">
                   <span class="install-label">client settings</span>
                 </div>
-                <pre><code>Endpoint: http://localhost:888/v1
+                <pre><code>Endpoint: http://localhost:20128/v1
 API Key:  [Settings &rarr; API Keys in the dashboard]
 Model:    kr/claude-sonnet-4.5</code></pre>
               </div>
@@ -482,7 +482,7 @@ Model:    kr/claude-sonnet-4.5</code></pre>
               <p>
                 Yes &mdash; anything that speaks the OpenAI Chat Completions API, the Claude
                 Messages API, the Responses API, or Ollama-compatible chat points at
-                <code>http://localhost:888/v1</code> with an API key minted in the dashboard. The
+                <code>http://localhost:20128/v1</code> with an API key minted in the dashboard. The
                 wiki's <a href="client-setup.html">client setup page</a> has per-tool snippets.
               </p>
             </details>

@@ -109,7 +109,7 @@ func TestMain(m *testing.M) {
 
 	// The config is supplied directly rather than through viper, so the test
 	// never depends on a .env file in the package directory. PORT=0 is not an
-	// option: config forces 888 for any value <= 0.
+	// option: config forces 20128 for any value <= 0.
 	port, perr := freePort()
 	if perr != nil {
 		fmt.Fprintln(os.Stderr, "reserve a port:", perr)
