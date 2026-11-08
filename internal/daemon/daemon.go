@@ -117,11 +117,11 @@ func RunningPID() int {
 // Start spawns a detached daemon, records its PID, and waits for it to become
 // healthy. It returns ErrAlreadyRunning when the port is already served.
 func Start(url string, extraArgs []string) (StartResult, error) {
-	if busy, who := portBusy(url); busy {
-		if pid := RunningPID(); pid > 0 {
+	if conflict := DescribePortConflict(url); conflict.Busy {
+		if pid := RunningPID(); pid > 0 && pid == conflict.Process.PID {
 			return StartResult{PID: pid, URL: url, Existing: true}, ErrAlreadyRunning
 		}
-		return StartResult{URL: url, Existing: true}, fmt.Errorf("%w on %s (%s) — stop it first, or start this binary without the daemon", ErrAlreadyRunning, url, who)
+		return StartResult{URL: url, Existing: true}, fmt.Errorf("%s", conflict.Error())
 	}
 
 	execPath, err := proc.SelfExecutable()
