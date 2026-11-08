@@ -24,6 +24,7 @@
   import Menu from '../lib/ui/Menu.svelte'
   import MenuItem from '../lib/ui/MenuItem.svelte'
   import { copyToClipboard } from '../lib/clipboard'
+  import { t } from '../lib/i18n.svelte'
   import type { Snippet } from 'svelte'
   import ApiKeysTable from './keys/ApiKeysTable.svelte'
   import {
@@ -396,7 +397,8 @@
     // decided against it without reaching for the pointer.
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      if (showTunnelSettingsModal) showTunnelSettingsModal = false
+      if (isCreateKeyOpen) closeCreateKeyModal()
+      else if (showTunnelSettingsModal) showTunnelSettingsModal = false
       else if (showDisableTunnelModal) showDisableTunnelModal = false
       else if (showDisableTailscaleModal) showDisableTailscaleModal = false
     }
@@ -883,6 +885,14 @@
     bulkKeyError = null
     bulkKeyResults = []
   }
+  // One close path for the create-key dialog: the X, Escape and the backdrop
+  // click all funnel here so every exit resets the draft the same way.
+  function closeCreateKeyModal() {
+    isCreateKeyOpen = false
+    newKeyName = ''
+    createKeyTab = 'single'
+    resetBulkKeyForm()
+  }
   async function handleBulkCreateKeys() {
     if (bulkEntries.length === 0 || bulkProblems.length > 0) return
     bulkKeyBusy = true
@@ -1286,18 +1296,19 @@
      modal: on light a 75% black wash read as a dark island around the sheet,
      dark keeps its black/75 via the dark variant. -->
 {#if isCreateKeyOpen}
-  <div class="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-[var(--app-modal-scrim)] dark:bg-black/75 backdrop-blur-sm p-4">
+  <div
+    class="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-[var(--app-modal-scrim)] dark:bg-black/75 backdrop-blur-sm p-4"
+    onclick={(e) => {
+      if (e.target === e.currentTarget) closeCreateKeyModal()
+    }}
+  >
     <div class="my-auto w-full {createKeyTab === 'bulk' ? 'max-w-lg' : 'max-w-md'} p-6 rounded-2xl bg-surface border border-border shadow-2xl space-y-4">
       <div class="flex items-center justify-between pb-3 border-b border-border">
         <h3 class="text-base font-bold text-text-main">Create API Key</h3>
         <button
           type="button"
-          onclick={() => {
-            isCreateKeyOpen = false
-            newKeyName = ''
-            createKeyTab = 'single'
-            resetBulkKeyForm()
-          }}
+          aria-label={t('Close')}
+          onclick={closeCreateKeyModal}
           class="text-text-muted hover:text-text-main cursor-pointer"
         >
           <X class="w-4 h-4" />
