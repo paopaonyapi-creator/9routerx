@@ -12,17 +12,24 @@ import (
 	"9routerx/proxy/internal/providers"
 )
 
-// isModelFree evaluates whether a model is free by combining suffix heuristic
-// (IsFreeTierModel) and zero-cost pricing entries.
+// isModelFree evaluates whether a model is free by combining the shipped
+// free-model catalogue, the suffix heuristic (IsFreeTierModel) and zero-cost
+// pricing entries.
 //
-// Suffix precedence: a model explicitly identified with :free, /free, or -free
-// in the catalog or registry is treated as free, even if the generic vendor table
-// lists a fallback rate for the unadorned model name (e.g. deepseek-v4-flash-free).
-// Suffixes encoding thinking levels (e.g. "(high)") are stripped before evaluation.
+// Catalogue precedence: a model listed in providers' freeModelCatalog for this
+// provider is free by documented regime, which is the same answer /v1/models
+// payloads and the regime-aware recovery path read. Suffix comes next: a model
+// explicitly identified with :free, /free, or -free in the catalog or registry
+// is treated as free, even if the generic vendor table lists a fallback rate
+// for the unadorned model name (e.g. deepseek-v4-flash-free). Suffixes encoding
+// thinking levels (e.g. "(high)") are stripped before evaluation.
 func isModelFree(provider, modelID string) bool {
 	cleanID := modelID
 	if parenIdx := strings.IndexByte(cleanID, '('); parenIdx != -1 {
 		cleanID = strings.TrimSpace(cleanID[:parenIdx])
+	}
+	if providers.IsFreeModel(provider, providers.FreeModelCandidate{ID: cleanID}) {
+		return true
 	}
 	if providers.IsFreeTierModel(cleanID) {
 		return true
