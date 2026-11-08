@@ -44,7 +44,7 @@ func cwdOrError() string {
 }
 
 // TestInjectIconsCoversEveryMarker proves the injected output carries one
-// icon for every entry the maps name, the two check/cross lists are tagged
+// icon for every entry the maps name, the current benefits list is tagged
 // and fully marked, and the README article holds no emoji.
 func TestInjectIconsCoversEveryMarker(t *testing.T) {
 	body := renderReadme(t)
@@ -80,7 +80,7 @@ func TestInjectIconsCoversEveryMarker(t *testing.T) {
 		}
 	}
 
-	for _, class := range []string{"md-pros", "md-cons"} {
+	for _, class := range []string{"md-pros"} {
 		start := strings.Index(body, `<ul class=`+class+`>`)
 		if start < 0 {
 			t.Fatalf("no ul.%s in the rendered README", class)
@@ -96,6 +96,21 @@ func TestInjectIconsCoversEveryMarker(t *testing.T) {
 
 	if emojiPattern.MatchString(body) {
 		t.Errorf("rendered README still contains emoji: %q", emojiPattern.FindString(body))
+	}
+}
+
+// Every current section must remain annotated; deleting stale registry entries
+// alone must not turn a rewritten README into an unmarked page.
+func TestEveryCurrentReadmeSectionHasAnIcon(t *testing.T) {
+	body := renderReadme(t)
+	headings := regexp.MustCompile(`<h2 id="([^"]+)">`).FindAllStringSubmatch(body, -1)
+	if len(headings) == 0 {
+		t.Fatal("README has no sections")
+	}
+	for _, heading := range headings {
+		if _, ok := headingIcons[heading[1]]; !ok {
+			t.Errorf("current README section %q has no icon mapping", heading[1])
+		}
 	}
 }
 

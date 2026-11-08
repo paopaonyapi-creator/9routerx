@@ -88,6 +88,8 @@ Install 9RouterX, create your local gateway API key in the dashboard on port `20
 
 ### 1. Install 9RouterX
 
+Upgrading from 9Router? Data carries over automatically; run `9routerx service take-over` to replace the old gateway and its autostart in one step ([migration guide](wiki/migration.md)).
+
 **Option A — Via npm (Recommended for Linux, macOS, and Windows):** requires Node.js **>= 18**.
 
 ```bash

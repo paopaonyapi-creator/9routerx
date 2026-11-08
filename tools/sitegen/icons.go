@@ -3,36 +3,10 @@ package main
 
 import "strings"
 
-// The README used to carry its section markers as emoji: `## Quick Start`,
-// `- **RTK Token Saver**`, `- **RTK input compression**` and friends.
-// The markdown sources are emoji-free now (the owner's no-emoji deliverable
-// rule), and the markers they used to carry live here instead: a small map
-// from the text the emoji used to sit next to, to a lightweight inline SVG
-// (stroke line art on the Lucide/Feather 24x24 grid, MIT/ISC-licensed
-// drawing style re-drawn — no icon font, no CDN request, no npm dependency).
-//
-// Why injection at render time, not markup in the markdown source: the README
-// is also rendered by github.com, which strips class attributes and would
-// turn hand-written <svg> in the source into a half-styled page. Injecting on
-// the finished HTML keeps the repository file plain text while the published
-// site gets the icons — one mechanism for the whole site, sized and colored
-// entirely from the page stylesheet (template.go), stroke = currentColor so
-// the dark and light themes both inherit.
-//
-// The existing web/public/icons.svg sprite was checked first and carries only
-// the social/brand icons (bluesky, discord, documentation, github, social, x)
-// — none of the sections or features below — so the sprite cannot be the
-// source, and it must not be grown either: web/public belongs to the
-// dashboard build. Hence inline SVGs from this map, per spec option 2.
-//
-// The injection runs on the same point of the pipeline wrapTables runs
-// (renderMarkdown in main.go): after goldmark, on the exact markup the
-// browser gets. Every needle below is a byte-exact prefix of that markup —
-// goldmark renders `<ul>\n<li>` with no indentation, escapes `&` in text to
-// `&amp;`, and heading ids follow the anchorID rules (lowercase, spaces and
-// runs of punctuation to dashes, the rest dropped). Tests in icons_test.go
-// assert every needle matches a live render, so a markdown edit that moves
-// the text fails the build here instead of silently dropping its icon.
+// README annotations stay in the HTML renderer so GitHub Markdown stays plain.
+// Match the current document, not an obsolete feature-list layout; live-render
+// tests pin every heading, list lead and link. Icons are inline SVGs with no
+// font or external request.
 
 // iconOpen wraps every injected icon. Deliberately minimal — the stroke
 // presentation attributes (fill, stroke, linecap, linejoin) live in the
@@ -130,93 +104,49 @@ func iconSVG(name string) string {
 	return iconOpen + iconPaths[name] + "</svg>"
 }
 
-// headingIcons maps the heading id (anchorID of the heading text) to the icon
-// the section's emoji used to carry. Keys are the ids the emoji-free headings
-// slug to — `## Quick Start` published id `-quick-start`, the plain
-// `## Quick Start` publishes `quick-start` — so the map doubles as the
-// section list that changed slugs.
+// headingIcons maps every current README section id to its inline icon.
 var headingIcons = map[string]string{
-	"why-9routerx": "help-circle",
-	"whats-different-from-9router--9router-go": "compass",
-	"how-it-works":                    "refresh-cw",
-	"quick-start":                     "zap",
-	"key-features":                    "lightbulb",
-	"sharing-a-database-with-9router": "database",
-	"screenshots":                     "camera",
-	"setup-guide":                     "settings",
-	"experimental-builds":             "flask-conical",
-	"dashboard-login--fresh-install":  "key",
-	"faq":                             "help-circle",
-	"contributing":                    "users",
-	"docs":                            "book-open",
-	"acknowledgments":                 "heart",
-	"license":                         "file-text",
+	"why-9routerx":                                "help-circle",
+	"system-architecture":                         "layers",
+	"key-features":                                "lightbulb",
+	"quick-start":                                 "zap",
+	"sharing-a-database-with-9router":             "database",
+	"screenshots":                                 "camera",
+	"supported-ai-coding-clients":                 "monitor",
+	"free-ai-providers--keyless-models-catalog":   "gift",
+	"provider-categories-breakdown-155-providers": "globe",
+	"embedded-dashboard-overview":                 "monitor",
+	"setup-guide-summary--wiki-documentation":     "settings",
+	"architecture-comparison":                     "compass",
+	"frequently-asked-questions-faq":              "help-circle",
+	"contributing":                                "users",
+	"docs":                                        "book-open",
+	"acknowledgments":                             "heart",
+	"license":                                     "file-text",
+	"attribution":                                 "users",
 }
 
-// listIcons maps the bold lead of a Key Features item to the icon its emoji
-// carried. The needles are `<li><strong>Text</strong>` — the exact markup
-// goldmark emits for `- **Text**`, with `&` escaped where the text has one.
-// The two leads that also open items in the "What's different" list pick up
-// their icon there too, which keeps the two lists visually consistent.
+// listIcons maps bold leads in the current dashboard and contribution lists.
 var listIcons = map[string]string{
-	`<li><strong>RTK input compression</strong>`:                            "compress",
-	`<li><strong>Anti-slop injector</strong>`:                               "eraser",
-	`<li><strong>Context squeezer</strong>`:                                 "scissors",
-	`<li><strong>Tool-call repair fallback</strong>`:                        "wrench",
-	`<li><strong>JSON guard</strong>`:                                       "shield",
-	`<li><strong>Per-tool output filters</strong>`:                          "filter",
-	`<li><strong>Output styles</strong>`:                                    "type",
-	`<li><strong>Semantic cache + prompt cache</strong>`:                    "layers",
-	`<li><strong>GCF compression</strong>`:                                  "archive",
-	`<li><strong>Per-key governance</strong>`:                               "sliders-horizontal",
-	`<li><strong>Plan templates</strong>`:                                   "clipboard-list",
-	`<li><strong>IP whitelist per key</strong>`:                             "lock",
-	`<li><strong>Per-key system prompt &amp; endpoint permissions</strong>`: "braces",
-	`<li><strong>Security event log</strong>`:                               "triangle-alert",
-	`<li><strong>SSRF guard + PII masking</strong>`:                         "brick-wall",
-	`<li><strong>3-tier circuit breaker</strong>`:                           "zap",
-	`<li><strong>TLS stealth</strong>`:                                      "eye-off",
-	`<li><strong>MCP server</strong>`:                                       "cpu",
-	`<li><strong>A2A endpoints</strong>`:                                    "link",
-	`<li><strong>Telegram notifications + multi-target webhooks</strong>`:   "send",
-	`<li><strong>Notification feed</strong>`:                                "bell",
-	`<li><strong>Teams billing</strong>`:                                    "users",
-	`<li><strong>Config bundle import/export</strong>`:                      "arrow-left-right",
-	`<li><strong>Tray companion</strong>`:                                   "monitor",
-	`<li><strong>Cloudflare tunnel</strong>`:                                "cloud",
-	`<li><strong>Web executors</strong>`:                                    "globe",
-	`<li><strong>Indonesian &amp; English dashboard</strong>`:               "languages",
-	`<li><strong>Usage analytics</strong>`:                                  "bar-chart",
-	`<li><strong>Model health + scheduled auto-ping</strong>`:               "activity",
-	`<li><strong>Uptime heartbeat</strong>`:                                 "signal",
-	`<li><strong>Codex quota tracking</strong>`:                             "hash",
-	`<li><strong>Backup/restore</strong>`:                                   "hard-drive",
-	`<li><strong>Command palette + bulk operations</strong>`:                "command",
-	`<li><strong>Free-tier catalog + custom credits</strong>`:               "gift",
-	`<li><strong>Routing strategies</strong>`:                               "repeat",
-	`<li><strong>Per-combo response timeout &amp; grace period</strong>`:    "timer",
-	`<li><strong>SQLite WAL persistence</strong>`:                           "database",
+	`<li><strong>Token Saver &amp; Compression Analytics:</strong>`:      "compress",
+	`<li><strong>Connections &amp; 1-Click OAuth Manager:</strong>`:      "key",
+	`<li><strong>Per-Key Governance &amp; Custom Usage Ranges:</strong>`: "sliders-horizontal",
+	`<li><strong>Bug report</strong>`:                                    "wrench",
+	`<li><strong>Feature request</strong>`:                               "lightbulb",
+	`<li><strong>Question</strong>`:                                      "help-circle",
 }
 
-// linkIcons maps the two nav links whose labels carried emoji (the release
-// binaries line under Quick Start) to their icons. Needles are the rendered
-// anchor's tail, so the icon lands inside the <a> before the label.
+// linkIcons annotates the existing release and installation references.
 var linkIcons = map[string]string{
-	`>All release binaries</a>`: "download",
-	`>Build from source</a>`:    "wrench",
+	`>GitHub Releases</a>`:     "download",
+	`>wiki — installation</a>`: "wrench",
 }
 
-// prosListNeedle and consListNeedle anchor the two "Why 9RouterX?" lists that
-// used to be marked with check and cross marks. The needles pin the exact lists — each is
-// the <ul> opening plus its first item — so a future list elsewhere never
-// gets marked by accident, and the markdown sources stay plain.
+// The README now has one benefits list and no separate disadvantages list.
 const (
 	prosListNeedle = `<ul>
-<li><strong>RTK Token Saver</strong>`
-	consListNeedle = `<ul>
-<li>Subscription quota expires unused every month`
+<li><strong>Unused Monthly Quotas &amp; Rate-Limit Interruptions → Smart 3-Tier Cascade (<code>Subscription → Cheap → Free</code>):</strong>`
 	prosListClass = `<ul class=md-pros>`
-	consListClass = `<ul class=md-cons>`
 )
 
 // injectIcons restores, on the published page, the markers the emoji-free
@@ -228,7 +158,7 @@ func injectIcons(html string) string {
 	html = injectHeadingIcons(html)
 	html = injectListIcons(html)
 	html = injectLinkIcons(html)
-	html = markProsConsLists(html)
+	html = markWhyList(html)
 	return html
 }
 
@@ -278,14 +208,9 @@ func injectLinkIcons(html string) string {
 	return html
 }
 
-// markProsConsLists tags the former check/cross lists with a class the stylesheet
-// uses to drop the bullet, and gives every item its check or cross as the
-// first child — the same inline-SVG mechanism as every other icon here, so
-// no data-URI in the stylesheet. The needle only matches the untagged list,
-// which is what makes the pass idempotent.
-func markProsConsLists(html string) string {
-	html = markOneList(html, prosListNeedle, prosListClass, "check")
-	return markOneList(html, consListNeedle, consListClass, "x")
+// markWhyList annotates only the current benefits list, not unrelated lists.
+func markWhyList(html string) string {
+	return markOneList(html, prosListNeedle, prosListClass, "check")
 }
 
 func markOneList(html, needle, class, markIcon string) string {

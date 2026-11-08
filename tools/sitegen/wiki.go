@@ -262,6 +262,11 @@ func imageSize(path string) (int, int, bool) {
 		w := binary.BigEndian.Uint32(hdr[16:20])
 		h := binary.BigEndian.Uint32(hdr[20:24])
 		return int(w), int(h), w > 0 && h > 0
+	// GIF: the logical screen width/height follow the six-byte version header.
+	case string(hdr[:6]) == "GIF87a" || string(hdr[:6]) == "GIF89a":
+		w := binary.LittleEndian.Uint16(hdr[6:8])
+		h := binary.LittleEndian.Uint16(hdr[8:10])
+		return int(w), int(h), w > 0 && h > 0
 	// WebP: a RIFF container whose VP8/VP8L/VP8X chunk carries the dimensions.
 	case string(hdr[0:4]) == "RIFF" && string(hdr[8:12]) == "WEBP":
 		switch string(hdr[12:16]) {
