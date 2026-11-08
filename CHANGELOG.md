@@ -28,7 +28,9 @@ Release history up to the fork point is archived in the upstream repo's
   tray assets in both its scan and its non-checksum fallback, so the fallback
   can only ever select the main binary, wherever the tray asset sits in the
   list. The manifest path was never affected: `downloadUrls` names the main
-  binary per platform explicitly.
+  binary per platform explicitly. Windows installs still running v1.1.0 carry
+  the old matcher in their own binary — update those manually (release page
+  or `install.ps1`) rather than through their Releases-API fallback.
 
 ## [v1.1.1] - 2026-11-08
 
