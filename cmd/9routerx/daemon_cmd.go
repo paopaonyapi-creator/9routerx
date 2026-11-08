@@ -66,6 +66,13 @@ func startDetached(cCtx *cli.Context) error {
 	}
 
 	url := daemonURL()
+	if handled, err := firstRunConflict(cCtx, url); handled {
+		return err
+	}
+	return startDetachedOn(cCtx, url)
+}
+
+func startDetachedOn(cCtx *cli.Context, url string) error {
 	res, err := daemon.Start(url, forwardArgs(cCtx))
 	if err == daemon.ErrAlreadyRunning {
 		fmt.Printf("9routerx already running (pid %d) → %s\n", res.PID, res.URL)
