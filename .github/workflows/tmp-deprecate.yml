@@ -8,6 +8,11 @@ jobs:
   deprecate:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org/
+
       - name: Deprecate 9routerx@0.0.0-stage (no unpublish)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
