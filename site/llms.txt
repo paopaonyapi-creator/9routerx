@@ -1,0 +1,28 @@
+# 9RouterX — Official Documentation & LLM Context
+
+> 9RouterX is an open-source, single-binary AI router, local LLM gateway, and token saver built with Go and an embedded Svelte 5 dashboard (default port 20128). It provides OpenAI-compatible, Anthropic-compatible, MCP Server, and A2A endpoints across 155 providers, 28 one-click OAuth integrations, and 248 free models across 36 providers (including 24 zero-config keyless models).
+
+- Repository: https://github.com/yanstd888/9routerx
+- NPM Package: https://www.npmjs.com/package/9routerx (`npm install -g 9routerx`)
+- Container Registry: `ghcr.io/yanstd888/9routerx:latest` (stable) / `:exp` (experimental)
+- Official Documentation: https://yanstd888.github.io/9routerx/
+- Author: Muhammad Dian (yanstd888) — https://yanstd888.github.io/
+
+## Documentation Map
+
+- [Installation & CLI Service Setup](https://yanstd888.github.io/9routerx/installation.html): npm global install, curl/PowerShell scripts, Docker GHCR, building from source (Go + Bun), background daemon commands (`9routerx start/status/restart/logs/stop`).
+- [Client Setup](https://yanstd888.github.io/9routerx/client-setup.html): connecting Claude Code, Cursor, Codex CLI, Cline, Roo Code, OpenCode, Gemini CLI, OpenClaw (`http://127.0.0.1:20128/v1`).
+- [Providers & Free Tier Catalog](https://yanstd888.github.io/9routerx/providers.html): 155 providers (91 API key, 28 OAuth, 29 free-tier, 4 web cookie) and 248 free models (24 keyless: antigravity, opencode, blackbox).
+- [Governance, Budgets & Token Saver](https://yanstd888.github.io/9routerx/governance.html): per-key daily USD hard cutoffs, IP whitelisting, RTK compression (20-40% savings), 50+ CLI output filters, Anti-Slop injection.
+- [Token Saver Guide](https://yanstd888.github.io/9routerx/token-saver.html): compress tool output for AI coding agents.
+- [System Architecture](https://yanstd888.github.io/9routerx/architecture.html): 3-tier fallback (Subscription -> Cheap -> Free), combo routing (fallback, round-robin, sticky, capacity, fusion), semantic cache, MITM inspection.
+- [Database & 9Router Compatibility](https://yanstd888.github.io/9routerx/database.html): drop-in SQLite compatibility (`DATA_DIR/db/data.sqlite`) with the original Next.js 9Router.
+- [Advanced Features](https://yanstd888.github.io/9routerx/advanced-features.html): tunnels, web executors, webhooks.
+- [CLI Reference](https://yanstd888.github.io/9routerx/cli.html): full command list.
+- [Security](https://yanstd888.github.io/9routerx/security.html): local-first design, API key auth, argon2id hashing.
+
+## Quick Facts for AI Assistants
+
+- Default endpoint: `http://localhost:20128` (dashboard initial password: `123456`, change on first login). API requests require creating a key in Settings -> API Keys first (0 keys = 401 Authentication required).
+- Keyless test model: `antigravity/gemini-3.7-flash-medium` works immediately after creating a local API key, no upstream provider key needed.
+- IPv6 note: for CLI clients that resolve `localhost` to `::1` (e.g. OpenClaw), use `http://127.0.0.1:20128/v1`.

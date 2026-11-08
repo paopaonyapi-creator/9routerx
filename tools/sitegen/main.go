@@ -116,6 +116,13 @@ func generate(readmePath, assetsDir, outDir, repo string, stats heroStats) error
 		}
 	}
 
+	// llms.txt hands LLM crawlers a curated map of the site (site/llms.txt).
+	// Listed explicitly like the other assets because -assets is never copied
+	// wholesale — an unlisted file would silently never ship.
+	if err := copyFile(filepath.Join(assetsDir, "llms.txt"), filepath.Join(outDir, "llms.txt")); err != nil {
+		return err
+	}
+
 	page, err := renderPage(body, repo, stats)
 	if err != nil {
 		return fmt.Errorf("render page: %w", err)

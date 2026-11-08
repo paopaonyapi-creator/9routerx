@@ -150,6 +150,7 @@ func TestGenerate(t *testing.T) {
 	writeFixture(t, filepath.Join(assets, "style.css"), "body{}")
 	writeFixture(t, filepath.Join(assets, "tg.html"), "<a href=\"tg\">tg</a>")
 	writeFixture(t, filepath.Join(assets, "logo-9routerx-128.png"), "logo-bytes")
+	writeFixture(t, filepath.Join(assets, "llms.txt"), "# 9RouterX\n")
 
 	shot := filepath.Join(root, "docs", "screenshots", "providers.png")
 	if err := os.MkdirAll(filepath.Dir(shot), 0o755); err != nil {
@@ -169,6 +170,7 @@ func TestGenerate(t *testing.T) {
 		"style.css",
 		"tg.html",
 		"tg/index.html",
+		"llms.txt",
 		"logo-9routerx-128.png",
 		filepath.FromSlash("docs/screenshots/providers.png"),
 	} {
@@ -231,6 +233,7 @@ func TestGenerateFailsOnMissingImage(t *testing.T) {
 	writeFixture(t, filepath.Join(assets, "style.css"), "body{}")
 	writeFixture(t, filepath.Join(assets, "tg.html"), "<a></a>")
 	writeFixture(t, filepath.Join(assets, "logo-9routerx-128.png"), "logo-bytes")
+	writeFixture(t, filepath.Join(assets, "llms.txt"), "# 9RouterX\n")
 
 	err := generate(readme, assets, filepath.Join(root, "_site"), "yanstd888/9routerx", heroStats{})
 	if err == nil {
