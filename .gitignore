@@ -81,9 +81,10 @@ stitch-screenshots/
 
 # skills CLI (npx skills add) byproducts — same class as the harness block:
 # per-machine agent tooling, not product content. The installed skill files
-# themselves land in the ignored /.agents/ tree.
+# themselves land in the ignored /.agents/ tree. NOTE: ./skills/ itself is the
+# tracked product skill catalog — do NOT ignore it; new files under it would
+# otherwise be silently excluded from every future commit.
 /agent/
-/skills/
 /skills-lock.json
 
 # shadcn-svelte dashboard audit screenshots (local evidence only)
