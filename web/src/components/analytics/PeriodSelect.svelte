@@ -21,6 +21,7 @@
 <script lang="ts">
   import { maxPanelWidth, placePanel, placementStyle } from '../../lib/ui/menuPosition'
   import { portal } from '../../lib/ui/portal'
+  import { t } from '../../lib/i18n.svelte'
   import {
     PERIODS,
     normalizeCustomPeriod,
@@ -67,7 +68,9 @@
   function applyCustom() {
     const normalized = normalizeCustomPeriod(customInput)
     if (!normalized) {
-      customError = 'Enter a number of days or hours, like 14d or 12h.'
+      // One message covers both rejections: unparsable text and the ten-year
+      // cap that normalizeCustomPeriod enforces on 99999d-style typos.
+      customError = t('Enter a number of days or hours, like 14d or 12h. Maximum: 3650 days (87600 hours).')
       return
     }
     select(normalized)

@@ -166,14 +166,25 @@ export function periodLabel(period: Period): string {
   return match[2] === 'd' ? `Last ${match[1]} days` : `Last ${match[1]} hours`
 }
 
+// A custom window feeds chart bucketing and the request-details query, and a
+// window of decades renders an unreadable axis while hammering the details
+// endpoint for every bucket. Ten years is the ceiling — anything larger is a
+// typo (99999d), not an analysis window.
+const CUSTOM_WINDOW_MAX = { d: 3650, h: 87600 } as const
+
 // normalizeCustomPeriod turns free text into the <n>d / <n>h form the server
-// understands. Returns null when the text is not a usable window, so the caller
-// can reject the input instead of sending a period that silently means 7 days.
+// understands. Returns null when the text is not a usable window — unparsable,
+// zero, or above the ten-year cap — so the caller can reject the input instead
+// of sending a period that silently means 7 days.
 export function normalizeCustomPeriod(input: string): PeriodPreset | null {
   const text = input.trim().toLowerCase().replace(/^\s+/, '')
   if (!text) return null
   const match = PERIOD_PATTERN.exec(text)
-  if (match && Number(match[1]) > 0) return `${Number(match[1])}${match[2]}` as PeriodPreset
+  if (match && Number(match[1]) > 0) {
+    const amount = Number(match[1])
+    if (amount > CUSTOM_WINDOW_MAX[match[2] as keyof typeof CUSTOM_WINDOW_MAX]) return null
+    return `${amount}${match[2]}` as PeriodPreset
+  }
   if (text === 'all') return 'all'
   return null
 }

@@ -40,4 +40,14 @@ describe('custom period input', () => {
       expect(normalizeCustomPeriod(bad)).toBeNull()
     }
   })
+
+  it('caps the window at ten years', () => {
+    expect(normalizeCustomPeriod('3650d')).toBe('3650d')
+    expect(normalizeCustomPeriod('87600h')).toBe('87600h')
+    // A five-digit day count is a typo, not an analysis window; the selector
+    // rejects it with the capped message instead of charting 99999 buckets.
+    expect(normalizeCustomPeriod('3651d')).toBeNull()
+    expect(normalizeCustomPeriod('87601h')).toBeNull()
+    expect(normalizeCustomPeriod('99999d')).toBeNull()
+  })
 })

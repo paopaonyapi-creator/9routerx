@@ -222,6 +222,7 @@
   "Cline AI Coding Assistant": "Asisten Pemrograman AI Cline",
   "Cline not detected locally": "Cline tidak terdeteksi secara lokal",
   "Close": "Tutup",
+  "Enter a number of days or hours, like 14d or 12h. Maximum: 3650 days (87600 hours).": "Isi jumlah hari atau jam, misal 14d atau 12h. Maksimum: 3650 hari (87600 jam).",
   "Close Proxy": "Tutup Proxy",
   "Close provider filter": "Tutup filter penyedia",
   "Close reset credit expiry modal": "Tutup modal kedaluwarsa kredit reset",
