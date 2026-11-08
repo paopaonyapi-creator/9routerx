@@ -450,7 +450,7 @@ jobs:
               echo "update manifest published to main"
               exit 0
             fi
-            echo "push rejected (main moved mid-release); retrying"
+            echo "push rejected (main moved mid-release); retrying (attempt $attempt/3)"
             sleep 5
           done
           echo "::error::could not push the update manifest to main after 3 attempts"
