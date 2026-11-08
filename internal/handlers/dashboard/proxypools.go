@@ -152,7 +152,7 @@ func (h *DashboardHandler) HandleCreateProxyPool(w http.ResponseWriter, r *http.
 		StrictProxy: req.StrictProxy,
 	}
 
-	created, err := h.Repo.InsertProxyPool(poolData)
+	created, err := h.Repo.InsertProxyPool(poolData, req.IsActive)
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return

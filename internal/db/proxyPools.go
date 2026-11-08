@@ -175,8 +175,19 @@ type ProxyPoolData struct {
 }
 
 // InsertProxyPool inserts a new proxy pool row and returns the pool object in
-// the same shape as the dashboard's createProxyPool result.
-func (r *Repo) InsertProxyPool(d ProxyPoolData) (map[string]any, error) {
+// the same shape as the dashboard's createProxyPool result. The pool starts
+// active unless the caller passes false as the optional argument — the
+// dashboard create form sends its Active switch here, while programmatic
+// creators (relay deploys) keep the active default.
+func (r *Repo) InsertProxyPool(d ProxyPoolData, active ...bool) (map[string]any, error) {
+	activeVal := true
+	if len(active) > 0 {
+		activeVal = active[0]
+	}
+	activeInt := 0
+	if activeVal {
+		activeInt = 1
+	}
 	id := randomID()
 	now := time.Now().UTC().Format(time.RFC3339)
 	dataBytes, err := json.Marshal(d)
@@ -185,7 +196,7 @@ func (r *Repo) InsertProxyPool(d ProxyPoolData) (map[string]any, error) {
 	}
 	_, err = r.db.Exec(
 		`INSERT INTO proxyPools (id, isActive, testStatus, data, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)`,
-		id, 1, "unknown", string(dataBytes), now, now,
+		id, activeInt, "unknown", string(dataBytes), now, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert proxy pool: %w", err)
@@ -198,7 +209,7 @@ func (r *Repo) InsertProxyPool(d ProxyPoolData) (map[string]any, error) {
 		"noProxy":      d.NoProxy,
 		"type":         d.Type,
 		"strictProxy":  d.StrictProxy,
-		"isActive":     true,
+		"isActive":     activeVal,
 		"testStatus":   "unknown",
 		"lastTestedAt": nil,
 		"lastError":    nil,
