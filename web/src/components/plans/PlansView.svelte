@@ -157,6 +157,9 @@
   }
 
   async function remove(plan: Plan) {
+    // Same guard as the keys table's delete: one misplaced click on the trash
+    // icon must not destroy a template every key inheriting it relies on.
+    if (!confirm(`Permanently delete "${plan.name}"? This cannot be undone.`)) return
     error = null
     notice = null
     try {
