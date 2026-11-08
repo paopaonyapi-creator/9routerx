@@ -1,6 +1,7 @@
 <!-- 9RouterX — source port and modifications by https://github.com/yanstd888/ — https://t.me/aiclub_id -->
 <script lang="ts">
   import { api, type GuardrailLog, type GuardrailPolicy, type VaultStatus } from '../../api/client'
+  import { t } from '../../lib/i18n.svelte'
   import Badge from '../../lib/ui/Badge.svelte'
   import Button from '../../lib/ui/Button.svelte'
   import Card from '../../lib/ui/Card.svelte'
@@ -147,7 +148,7 @@
 
   function addCustomPattern() {
     if (!customRegex.trim()) {
-      error = 'Regex pattern is required'
+      error = t('Regex pattern is required')
       return
     }
     formCustomPatterns = [
@@ -172,22 +173,23 @@
     error = null
     notice = null
     if (!formName.trim()) {
-      error = 'A policy needs a name'
+      error = t('A policy needs a name')
       return
     }
     if (formScope !== 'global' && !formScopeId.trim()) {
-      error = `A ${formScope}-scoped policy needs the ${formScope} it applies to`
+      const scopeLabel = SCOPES.find((scope) => scope.id === formScope)?.label ?? formScope
+      error = t('Select the {scope} this policy applies to').replace('{scope}', t(scopeLabel))
       return
     }
     if (formDetectors.length === 0) {
-      error = 'Select at least one detector'
+      error = t('Select at least one detector')
       return
     }
     if (formDetectors.includes('custom') && formCustomPatterns.length === 0 && customRegex.trim() !== '') {
       addCustomPattern()
     }
     if (formDetectors.includes('custom') && formCustomPatterns.length === 0) {
-      error = 'Custom pattern detector requires at least one pattern'
+      error = t('Custom pattern detector requires at least one pattern')
       return
     }
     try {
