@@ -2,6 +2,7 @@
 <script lang="ts">
   import Badge from '../lib/ui/Badge.svelte'
   import Card from '../lib/ui/Card.svelte'
+  import FreeProviderHealth from './FreeProviderHealth.svelte'
   import { api, type FreeTierLiveRow } from '../api/client'
   import {
     CATALOG_CURATED_AT,
@@ -65,6 +66,10 @@
 </script>
 
 <div class="max-w-4xl mx-auto space-y-6">
+  <!-- Free Provider Health: the fallback chain's live view of each free
+       provider — success rate, latency, recent refusals and cooldowns. -->
+  <FreeProviderHealth />
+
   <Card>
     <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
       <div>

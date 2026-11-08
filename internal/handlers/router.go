@@ -201,6 +201,9 @@ func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) 
 		// Same instance as the resilience panel reads: the data plane owns the
 		// layer it consults on every request.
 		dashH.Resilience = chatH.Resilience
+		// Same instance the free-tier fallback chain consults, so the free
+		// provider health panel shows what the chain would act on.
+		dashH.FreeResilience = chatH.FreeResilience
 	}
 	ssoH := sso.NewHandler(repo)
 
@@ -228,6 +231,13 @@ func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) 
 	r.Post("/api/providers/{id}/reorder", dashH.HandleReorderConnection)
 	r.Post("/api/providers/{id}/test", dashH.HandleTestConnection)
 	r.Get("/api/providers/suggested-models", HandleSuggestedModels)
+	// Free-tier resilience suite: per-provider health for the dashboard's
+	// "Free Provider Health" panel, plus the operator cooldown reset. Mounted
+	// here as well as in dashboard.RegisterRoutes (a tests-only table) for the
+	// same reason the catalog pair is: a route registered there alone 404s on
+	// the real server.
+	r.Get("/api/providers/health", dashH.HandleGetProvidersHealth)
+	r.Post("/api/providers/health/reset", dashH.HandleResetProvidersHealth)
 	// Usage & Quota Endpoints (dashboard quota tracker, usage stats, and topology stream)
 	r.Get("/api/usage/stream", HandleUsageStream(repo))
 	r.Get("/usage/stream", HandleUsageStream(repo))

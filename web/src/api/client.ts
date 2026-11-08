@@ -288,6 +288,30 @@ export interface FreeTierLiveResponse {
   generatedAt: string
 }
 
+/** One free provider's health row — the fallback chain's own view of it. */
+export interface FreeProviderHealthRow {
+  provider: string
+  /** healthy | flaky | cooling */
+  status: string
+  coolingUntil?: string
+  /** True when the wait has no clock (spent credit; success lifts it). */
+  coolingOpenEnded?: boolean
+  /** -1 = no data in the 24h window. */
+  successRatePct: number
+  samples: number
+  recent429: number
+  recent403: number
+  p95LatencyMs: number
+  regime?: string
+  freeModels: number
+}
+
+export interface FreeProvidersHealthResponse {
+  providers: FreeProviderHealthRow[]
+  coolingNow: number
+  generatedAt: string
+}
+
 /** A plan write. Omitted fields keep their stored value on update. */
 export type PlanInput = Partial<Omit<Plan, 'id' | 'createdAt' | 'updatedAt'>>
 
@@ -1830,6 +1854,11 @@ export const api = {
   // FASE 10.1 free-tier live tracking: each tracked provider's budget and this
   // period's spend, joined by the SPA onto its curated catalog rows.
   getFreeTierLive: () => request<FreeTierLiveResponse>('/api/free-tier/live'),
+
+  // Free-tier resilience suite: per-provider health (success rate, latency
+  // p95, recent 429/403, cooldown state) and the operator cooldown reset.
+  getFreeProvidersHealth: () => request<FreeProvidersHealthResponse>('/api/providers/health'),
+  resetFreeProvidersHealth: () => request<{ cleared: string[]; clearedNow: number }>('/api/providers/health/reset', { method: 'POST' }),
 
   // FASE 10.0 web-executor session pool: per-provider status, the settings
   // switch, and a manual health pass. A failed session is a 200 with ok=false —

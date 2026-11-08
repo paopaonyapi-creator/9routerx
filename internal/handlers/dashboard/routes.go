@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"9routerx/proxy/internal/db"
+	"9routerx/proxy/internal/freeresilience"
 	"9routerx/proxy/internal/handlers/shared"
 	"9routerx/proxy/internal/middleware"
 	"9routerx/proxy/internal/modelhealth"
@@ -60,6 +61,11 @@ type DashboardHandler struct {
 	// exists the status endpoint reports the settings switches while the test
 	// endpoint answers 503 rather than inventing health state.
 	WebExec *webexec.HealthRunner
+	// FreeResilience is the free-tier resilience suite's tracker — the same
+	// instance the request path records into and the fallback chain reads.
+	// Held here so the health panel reports what the chain would act on.
+	// Nil when the handler was built outside a boot.
+	FreeResilience *freeresilience.Tracker
 }
 
 // NewDashboardHandler initializes a DashboardHandler with the provided Repo.
@@ -290,6 +296,12 @@ func RegisterRoutes(r chi.Router, h *DashboardHandler) {
 		// this period's spend. The free-tier page polls it every 60s and joins
 		// the rows onto its curated catalog by provider id.
 		r.Get("/free-tier/live", h.HandleGetFreeTierLive)
+
+		// Free-tier resilience suite: per-provider health (success rate,
+		// latency p95, recent 429/403, cooling state) and the operator's
+		// cooldown reset.
+		r.Get("/providers/health", h.HandleGetProvidersHealth)
+		r.Post("/providers/health/reset", h.HandleResetProvidersHealth)
 
 		// Cache Analytics & Management
 		r.Get("/resilience", h.HandleGetResilience)
