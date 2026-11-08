@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"9routerx/proxy/internal/db"
+
 	"github.com/go-chi/chi/v5"
 )
 
@@ -205,9 +207,15 @@ func TestHandleTestProxyPool_FallbackProbe(t *testing.T) {
 		}
 	})
 
-	// 4. Invalid proxy URL
+	// 4. Invalid proxy URL — created through the repo because the create
+	// endpoint now rejects an unparseable URL with 400; the probe itself must
+	// still fail gracefully on whatever lands in the table.
 	t.Run("Invalid proxy URL", func(t *testing.T) {
-		poolID := createPool("Invalid URL Pool", "://invalid-url")
+		created, err := repo.InsertProxyPool(db.ProxyPoolData{Name: "Invalid URL Pool", ProxyURL: "://invalid-url"})
+		if err != nil {
+			t.Fatalf("seed invalid pool: %v", err)
+		}
+		poolID := created["id"].(string)
 		testReq := httptest.NewRequest(http.MethodPost, "/api/proxy-pools/"+poolID+"/test", nil)
 		testRec := httptest.NewRecorder()
 		router.ServeHTTP(testRec, testReq)
