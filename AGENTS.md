@@ -423,7 +423,7 @@ Measured on `main` + the first-paint work, 2026-10-21 (`cd web && bun run build`
 
 §6.F is about what the bundle weighs. This is about what the browser has to do to *show* it, and it exists because a dashboard that took 21 seconds to appear on a first visit was shipped and nobody measured it.
 
-The symptom is the `Connecting to 9RouterX Localhost Gateway (:888)...` screen hanging on the first dashboard open. **Before blaming the gateway, measure the client side.** The backend is almost never the cause: every boot endpoint answers in under 5 ms. The delay is in the bytes and round trips before the app mounts.
+The symptom is the `Connecting to 9RouterX Localhost Gateway (:20128)...` screen hanging on the first dashboard open. **Before blaming the gateway, measure the client side.** The backend is almost never the cause: every boot endpoint answers in under 5 ms. The delay is in the bytes and round trips before the app mounts.
 
 #### G.1 No third-party origins
 
@@ -472,7 +472,7 @@ Report three numbers: **bytes transferred**, **request count**, **load event**. 
 
 #### G.5 The boot screen must not be the only thing the user sees
 
-The `Connecting to 9RouterX Localhost Gateway (:888)...` spinner is a **full-screen gate**: it replaces the whole dashboard until every boot request resolves. Two consequences to keep in mind when touching it:
+The `Connecting to 9RouterX Localhost Gateway (:20128)...` spinner is a **full-screen gate**: it replaces the whole dashboard until every boot request resolves. Two consequences to keep in mind when touching it:
 
 - It is the first thing an operator sees when something is wrong, so it must not become a *slower* way to find out what is wrong.
 - It is a symptom, not a diagnosis. The message names the gateway, so an operator blames the gateway — when the cause was the browser's download. Do not "fix" a slow dashboard by making the spinner more informative; measure where the time goes first.
@@ -661,7 +661,7 @@ for pair in $(grep -E '^CROSS_TARGETS *:=' Makefile | sed 's/.*:=[[:space:]]*//'
     go build -o /dev/null ./cmd/9routerx/ || echo "FAIL $pair"
 done
 
-# Run dev server with live go run (PORT=888 default)
+# Run dev server with live go run (PORT=20128 default)
 make dev
 
 # Changelog. Per PR: write .changes/<pr-number>-<slug>.md, never CHANGELOG.md.

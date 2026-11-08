@@ -22,7 +22,7 @@ Please include, when possible:
 - A minimal reproduction (curl command, config, or dashboard flow).
 - Impact assessment — what an attacker gains (auth bypass, credential
   extraction, SSRF, RCE, …).
-- Whether the issue affects the default configuration (`PORT=888`, local
+- Whether the issue affects the default configuration (`PORT=20128`, local
   bind, default password flow) or only non-default setups.
 
 What we ask you **not** to do: test against deployments you do not own, access

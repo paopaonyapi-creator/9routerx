@@ -486,7 +486,7 @@ func (h *DashboardHandler) HandleTailscaleEnable(w http.ResponseWriter, r *http.
 	_, _ = tailscaleExec(context.Background(), bin, "funnel", "--bg", "reset")
 	port := config.LoadConfig().Port
 	if port <= 0 {
-		port = 888
+		port = 20128
 	}
 	funnelCtx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
@@ -563,7 +563,7 @@ func (h *DashboardHandler) HandleTunnelRepairOrigin(w http.ResponseWriter, r *ht
 
 	port := config.LoadConfig().Port
 	if port <= 0 {
-		port = 888
+		port = 20128
 	}
 
 	opts := tunnel.CloudflareOptions{

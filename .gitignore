@@ -139,3 +139,9 @@ nul
 tmp/
 __pycache__/
 .pytest_cache/
+
+# Pages redesign audit screenshots (local only)
+/audit-screens-pages-redesign/
+
+# No-emoji icon audit screenshots (local evidence only)
+/audit-screens-noemoji/

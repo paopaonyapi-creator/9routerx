@@ -11,6 +11,9 @@ Release history up to the fork point is archived in the upstream repo's
 
 ### Changed
 
+- BREAKING-ish: default port 888 → 20128 for ecosystem compatibility with
+  9router / 9router-go; set `PORT=888` to keep the old behavior.
+- docs: npm install as primary install path; npm badges
 - docs: acknowledgments table with live star badges; attribution fixes (headroom source, frontend deps)
 - Release sections carry the `v` prefix (`## [v1.0.0]`), matching what the
   release workflow's notes extraction and the dashboard changelog both expect;

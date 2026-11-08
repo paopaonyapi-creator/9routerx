@@ -101,16 +101,18 @@ func readPiConfig() map[string]any {
 	return nil
 }
 
-// piGatewayPortRE matches the current default gateway port after a host colon
-// without swallowing a longer port (:8880, :18883). 888 is too short for the
-// loose substring match the four-digit 20128/20130 survive with.
+// piGatewayPortRE matches the previous default gateway port (888) after a
+// host colon without swallowing a longer port (:8880, :18883). 888 is too
+// short for the loose substring match the five-digit 20128/20130 survive
+// with; it stays in the heuristic so configs written by 888-default builds
+// are still recognized.
 var piGatewayPortRE = regexp.MustCompile(`:888([^0-9]|$)`)
 
 // piHas9RouterConfig reports whether any provider block points at a local
 // 9router: the named block with a baseUrl, or any block carrying one of the
-// gateway's default ports (888 the current default, 20130 the previous one
-// still present in configs older builds wrote, 20128 the upstream Node
-// gateway's).
+// gateway's default ports (20128 the current default — also the upstream
+// Node gateway's, 888 the previous one and 20130 the one before that, both
+// still present in configs older builds wrote).
 func piHas9RouterConfig(config map[string]any) bool {
 	providers, _ := config["providers"].(map[string]any)
 	if p, ok := providers[piProviderName].(map[string]any); ok {

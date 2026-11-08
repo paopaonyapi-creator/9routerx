@@ -28,8 +28,9 @@ You **do not have to stop 9Router** if you want to keep the Node.js dashboard
 around. Run 9RouterX on a different port against the same `DATA_DIR`:
 
 ```bash
-# 9Router on :20128 (Next.js)  ·  9RouterX on :888 (Go, same DB)
-PORT=888 DATA_DIR=/home/you/.9router ./9routerx
+# Both gateways now default to :20128 — give 9RouterX an explicit
+# different port (any free one works) to run side by side:
+PORT=20129 DATA_DIR=/home/you/.9router ./9routerx
 ```
 
 Both read the same tables, so a connection you add in either dashboard shows up

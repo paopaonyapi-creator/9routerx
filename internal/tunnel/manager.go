@@ -176,7 +176,7 @@ func localPort() int {
 	if p := config.LoadConfig().Port; p > 0 {
 		return p
 	}
-	return 888
+	return 20128
 }
 
 // Enable starts the tunnel and waits until it carries traffic.

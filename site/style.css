@@ -1,89 +1,184 @@
 /* 9RouterX — derived from the work of https://github.com/yanstd888/ — port and modifications by the maintainers — https://t.me/aiclub_id */
 /*
- * 9RouterX project page.
+ * 9RouterX project page + wiki.
  *
- * The palette is lifted from the dashboard's own tokens (web/src/index.css):
- * warm paper light theme, charcoal dark theme, terracotta brand. Reason: a
- * visitor who opens the docs and then the dashboard should see one product, and
- * a second invented palette would read as a different tool.
+ * The palette is the dashboard's own glyph token set (web/src/index.css), not a
+ * second invented palette: DARK is the default identity — the dashboard ships
+ * `<html class="dark">` and this site now defaults to the same glyph dark
+ * palette — with the glyph light variant behind `prefers-color-scheme: light`
+ * and the `.light`/`.dark` classes the wiki theme toggle sets on <html>.
+ * Every value below is quoted from web/src/index.css in the token blocks; the
+ * token names carry the source line in a trailing comment.
  *
- * Terracotta appears exactly three times: the wordmark plate, the focus ring,
- * and link hover. Brand-500 fails 4.5:1 as link text on paper (3.2:1), so links
- * use brand-700 light / brand-300 dark, both above 5.9:1.
+ * Type is the dashboard's glyph pairing: Manrope for display and body, Geist
+ * Mono for code and every technical label (web/src/index.css --font-headline /
+ * --font-body / --font-code). Both are variable fonts loaded by the templates
+ * from Google Fonts at the same weight ranges the vendored files cover
+ * (Manrope 200-800, Geist Mono 100-900).
  */
 
+/* ── Design tokens — DARK (default identity) ───────────────────────────────
+   Quoted from web/src/index.css, `.dark` block (the dashboard's shipped
+   default):
+     --9x-bg: #0e0f11;          --9x-ink: #eceef2;
+     --9x-btn: #16181d;         --9x-accent: #3b82f6;
+     --9x-accent-ink: #0a0c10;  --9x-line: rgba(236, 238, 242, 0.1);
+     --app-bg-alt: #121316;     --app-surface-2: #1c1f25;
+     --app-text-muted: #9aa0ab; --app-text-subtle: #7f8794;
+     --app-primary-hover: #6ea3f8;
+     --9x-ok: #5fc58a;  --9x-err: #ff7a6b;  --9x-wait: #e0a447;
+     --9x-glass: rgba(18, 19, 22, 0.62);
+     --9x-gridline: rgba(236, 238, 242, 0.035);
+     --9x-orange: #f97316;
+     --9x-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 10px 40px rgba(0, 0, 0, 0.45);
+     --9x-shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.06) inset,
+       0 6px 16px -4px rgba(0, 0, 0, 0.5),
+       0 0 24px -6px color-mix(in srgb, var(--9x-accent) 22%, transparent);
+   Radius scale (same in both themes, web/src/index.css):
+     --9x-radius-sm: 8px;  --9x-radius-md: 12px;
+     --9x-radius-lg: 16px; --9x-radius-pill: 999px;
+   Motion (web/src/index.css): --9x-ease: cubic-bezier(0.22, 1, 0.36, 1). */
 :root {
-  color-scheme: light;
-  --bg: #fdfaf6;
-  --bg-alt: #f7f3ee;
-  --surface: #ffffff;
-  --border: #e5e7eb;
-  --border-subtle: #f1f1f3;
-  --text: #0a0a0a;
-  --text-muted: #6b7280;
-  --link: #a64027;
-  --link-hover: #7a2f1d;
-  --brand: #e56a4a;
-  --radius: 10px;
-  --radius-lg: 14px;
-  --font-body: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: dark;
+  --bg: #0e0f11;                        /* --9x-bg dark */
+  --bg-alt: #121316;                    /* --app-bg-alt dark */
+  --surface: #16181d;                   /* --app-surface dark (--9x-btn) */
+  --surface-2: #1c1f25;                 /* --app-surface-2 dark */
+  --border: rgba(236, 238, 242, 0.1);   /* --9x-line dark */
+  --border-subtle: rgba(236, 238, 242, 0.06); /* --app-border-subtle dark */
+  --text: #eceef2;                      /* --9x-ink dark */
+  --text-muted: #9aa0ab;                /* --app-text-muted dark */
+  --text-subtle: #7f8794;               /* --app-text-subtle dark */
+  --link: #6ea3f8;                      /* --app-primary-hover dark */
+  --link-hover: #3b82f6;                /* --9x-accent dark */
+  --brand: #3b82f6;                     /* --9x-accent dark */
+  /* Text on accent/danger/success fills: near-black ink, because white is only
+     3.7:1 on the electric blue (web/src/index.css --9x-accent-ink dark). */
+  --brand-ink: #0a0c10;                 /* --9x-accent-ink dark */
+  --ok: #5fc58a;                        /* --9x-ok dark */
+  --err: #ff7a6b;                       /* --9x-err dark */
+  --wait: #e0a447;                      /* --9x-wait dark */
+  --orange: #f97316;                    /* --9x-orange (both themes) */
+  --glass: rgba(18, 19, 22, 0.62);      /* --9x-glass dark */
+  --gridline: rgba(236, 238, 242, 0.035); /* --9x-gridline dark */
+  --cell: 12px;                         /* --9x-cell */
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 10px 40px rgba(0, 0, 0, 0.45); /* --9x-shadow dark */
+  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 6px 16px -4px rgba(0, 0, 0, 0.5),
+    0 0 24px -6px color-mix(in srgb, var(--brand) 22%, transparent); /* --9x-shadow-lg dark */
+  --radius-sm: 8px;                     /* --9x-radius-sm */
+  --radius: 12px;                       /* --9x-radius-md (and shadcn --radius) */
+  --radius-lg: 16px;                    /* --9x-radius-lg */
+  --radius-pill: 999px;                 /* --9x-radius-pill */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1); /* --9x-ease */
+  --font-body: "Manrope", "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    system-ui, sans-serif;              /* --font-body */
+  --font-headline: "Manrope", "Inter", -apple-system, BlinkMacSystemFont, system-ui,
+    sans-serif;                         /* --font-headline */
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+    monospace;                          /* --font-code */
 }
 
-@media (prefers-color-scheme: dark) {
+/* ── Design tokens — LIGHT (glyph light palette) ───────────────────────────
+   Quoted from web/src/index.css, `:root` block:
+     --9x-bg: #f6f6f3;          --9x-ink: #16181d;
+     --9x-btn: #eceef2;         --9x-accent: #2f5bd3;
+     --9x-accent-ink: #ffffff;  --9x-line: rgba(22, 24, 29, 0.1);
+     --app-bg-alt: #eef0f2;     --app-surface-2: #eef0f3;
+     --app-text-muted: #4b525d; --app-text-subtle: #646b76;
+     --app-primary-hover: #2447ad;
+     --9x-ok: #256743;  --9x-err: #b3362b;  --9x-wait: #84560c;
+     --9x-glass: rgba(250, 250, 248, 0.66);
+     --9x-gridline: rgba(22, 24, 29, 0.045);
+     --9x-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 10px 40px rgba(22, 24, 29, 0.08);
+   Link colour note: brand-500-class accents fail 4.5:1 as text on pale paper;
+   the glyph light accent #2f5bd3 lands at 5.4:1 on #f6f6f3 and its hover
+   #2447ad goes darker, so both clear AA as link text. */
+@media (prefers-color-scheme: light) {
   :root {
-    color-scheme: dark;
-    --bg: #1a1a1a;
-    --bg-alt: #1f1f1e;
-    --surface: #262626;
-    --border: #333333;
-    --border-subtle: #2a2a2a;
-    --text: #ededed;
-    --text-muted: #9ca3af;
-    --link: #ee8d6a;
-    --link-hover: #f4b59c;
+    color-scheme: light;
+    --bg: #f6f6f3;
+    --bg-alt: #eef0f2;
+    --surface: #fbfbf9;
+    --surface-2: #eef0f3;
+    --border: rgba(22, 24, 29, 0.1);
+    --border-subtle: rgba(22, 24, 29, 0.06);
+    --text: #16181d;
+    --text-muted: #4b525d;
+    --text-subtle: #646b76;
+    --link: #2f5bd3;
+    --link-hover: #2447ad;
+    --brand: #2f5bd3;
+    --brand-ink: #ffffff;
+    --ok: #256743;
+    --err: #b3362b;
+    --wait: #84560c;
+    --glass: rgba(250, 250, 248, 0.66);
+    --gridline: rgba(22, 24, 29, 0.045);
+    --shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 10px 40px rgba(22, 24, 29, 0.08);
+    --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.55) inset,
+      0 4px 10px -2px rgba(22, 24, 29, 0.09), 0 16px 40px -8px rgba(22, 24, 29, 0.18);
   }
 }
 
 /* The wiki pages carry no :root of their own — every colour comes from this
-   stylesheet, so this is the only place a theme can be decided.
-   The automatic media query is the default, and it stays. What is added is the
-   same pair of values behind a class on <html>, which is the mechanism the
-   dashboard already uses (`document.documentElement.classList.toggle('dark')`,
-   key `9router-theme` in web/src/components/TopBar.svelte). The wiki is a
-   hand-written static site with no framework, so it cannot reuse the component;
-   it reuses the contract instead — one toggle, one storage key, one set of
-   values. A reader who picks a theme in the dashboard and then opens the docs
-   should not have to pick it again. */
+   stylesheet, so this is the only place a theme can be decided. Dark is the
+   default identity (the dashboard ships dark-first), the media query above is
+   the OS fallback, and these class blocks are the mechanism the wiki theme
+   toggle uses (`document.documentElement.classList.toggle('dark')`, key
+   `9router-theme` in web/src/components/TopBar.svelte). The class rules come
+   AFTER the media query on purpose: at equal specificity, source order picks
+   the winner, so a reader's explicit choice beats the OS preference. */
 .light {
   color-scheme: light;
-  --bg: #fdfaf6;
-  --bg-alt: #f7f3ee;
-  --surface: #ffffff;
-  --border: #e5e7eb;
-  --border-subtle: #f1f1f3;
-  --text: #0a0a0a;
-  --text-muted: #6b7280;
-  --link: #a64027;
-  --link-hover: #7a2f1d;
+  --bg: #f6f6f3;
+  --bg-alt: #eef0f2;
+  --surface: #fbfbf9;
+  --surface-2: #eef0f3;
+  --border: rgba(22, 24, 29, 0.1);
+  --border-subtle: rgba(22, 24, 29, 0.06);
+  --text: #16181d;
+  --text-muted: #4b525d;
+  --text-subtle: #646b76;
+  --link: #2f5bd3;
+  --link-hover: #2447ad;
+  --brand: #2f5bd3;
+  --brand-ink: #ffffff;
+  --ok: #256743;
+  --err: #b3362b;
+  --wait: #84560c;
+  --glass: rgba(250, 250, 248, 0.66);
+  --gridline: rgba(22, 24, 29, 0.045);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 10px 40px rgba(22, 24, 29, 0.08);
+  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 4px 10px -2px rgba(22, 24, 29, 0.09), 0 16px 40px -8px rgba(22, 24, 29, 0.18);
 }
 .dark {
   color-scheme: dark;
-  --bg: #1a1a1a;
-  --bg-alt: #1f1f1e;
-  --surface: #262626;
-  --border: #333333;
-  --border-subtle: #2a2a2a;
-  --text: #ededed;
-  --text-muted: #9ca3af;
-  --link: #ee8d6a;
-  --link-hover: #f4b59c;
+  --bg: #0e0f11;
+  --bg-alt: #121316;
+  --surface: #16181d;
+  --surface-2: #1c1f25;
+  --border: rgba(236, 238, 242, 0.1);
+  --border-subtle: rgba(236, 238, 242, 0.06);
+  --text: #eceef2;
+  --text-muted: #9aa0ab;
+  --text-subtle: #7f8794;
+  --link: #6ea3f8;
+  --link-hover: #3b82f6;
+  --brand: #3b82f6;
+  --brand-ink: #0a0c10;
+  --ok: #5fc58a;
+  --err: #ff7a6b;
+  --wait: #e0a447;
+  --glass: rgba(18, 19, 22, 0.62);
+  --gridline: rgba(236, 238, 242, 0.035);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 10px 40px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 6px 16px -4px rgba(0, 0, 0, 0.5),
+    0 0 24px -6px color-mix(in srgb, var(--brand) 22%, transparent);
 }
-/* The class rules come after the media query on purpose. When the reader has
-   chosen a theme, that choice must beat what the operating system prefers —
-   otherwise someone who set dark in the dashboard would still be shown light on
-   a machine whose OS prefers light. Source order is what settles it here, since
-   both blocks have the same specificity. */
+
 * {
   box-sizing: border-box;
 }
@@ -143,8 +238,9 @@ a:hover {
   top: 1rem;
 }
 
-/* Masthead: flat, with a hairline instead of a shadow. The page scrolls under
-   it constantly, so elevation would be noise on every screen. */
+/* ── Masthead ─────────────────────────────────────────────────────────────── */
+
+/* Flat bar with a hairline, the dashboard's own top-bar weight. */
 .masthead {
   position: sticky;
   top: 0;
@@ -152,9 +248,6 @@ a:hover {
   border-bottom: 1px solid var(--border);
 }
 
-/* 76rem, not the project page's 52rem: the wiki shell is 76rem wide and the
-   nav trigger lives in this bar, so a narrower header would leave the trigger
-   floating away from the sidebar it opens. */
 .masthead-inner {
   max-width: 76rem;
   margin: 0 auto;
@@ -171,21 +264,36 @@ a:hover {
   align-items: center;
   gap: 0.55rem;
   color: var(--text);
-  font-weight: 600;
+  font-family: var(--font-headline);
+  font-weight: 700;
+  font-size: 1.0625rem;
   text-decoration: none;
   letter-spacing: -0.01em;
 }
 
+/* The brand mark. The logo asset (site/logo-9routerx-128.png, resized from
+   web/public/logo-9routerx.png) has a transparent background, and a
+   transparent flame on the pale light theme would float without an edge —
+   so it sits in a solid dark tile in BOTH themes, the way the dashboard's
+   login view presents the same mark on its dark panel. #0e0f11 is the dark
+   --9x-bg value from web/src/index.css; 10px is --radius-brand. */
 .wordmark-mark {
   display: grid;
   place-items: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: 7px;
-  background: var(--brand);
-  color: #ffffff;
-  font-weight: 700;
-  font-size: 1rem;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 10px;
+  background: #0e0f11;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.wordmark-mark img {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: block;
 }
 
 .masthead nav {
@@ -209,6 +317,643 @@ a:hover {
   text-decoration-thickness: 2px;
 }
 
+@media (max-width: 40rem) {
+  .masthead-inner {
+    gap: 0.5rem;
+  }
+  .masthead nav {
+    gap: 0.65rem;
+    font-size: 0.875rem;
+  }
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────────── */
+/* Structure follows the sharp-tagline + subheadline + install block + chip
+   strip pattern; every value, word and number is this repository's own. The
+   background is the dashboard's routing-map underlay — a faint graph-paper
+   gridline (web/src/components/AsciiRoutingBg.svelte paints the same CSS
+   pattern with --9x-gridline and --9x-cell) — plus two slow accent auras. */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Layer 1: the gridline underlay, straight from the dashboard's background:
+     background-image:
+       linear-gradient(to right, var(--9x-gridline) 1px, transparent 1px),
+       linear-gradient(to bottom, var(--9x-gridline) 1px, transparent 1px);
+     background-size: var(--9x-cell) var(--9x-cell); */
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, var(--gridline) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--gridline) 1px, transparent 1px);
+  background-size: var(--cell) var(--cell);
+  pointer-events: none;
+}
+
+/* Layer 2: two drifting auras — accent blue and the routing-flash orange,
+   both token colours at a whisper. CSS-only, transform-only (no repaint),
+   ~20s periods, disabled under prefers-reduced-motion. */
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(38rem 24rem at 24% 18%, color-mix(in srgb, var(--brand) 11%, transparent), transparent 70%),
+    radial-gradient(30rem 22rem at 78% 72%, color-mix(in srgb, var(--orange) 7%, transparent), transparent 70%);
+  animation: hero-aura 22s var(--ease) infinite alternate;
+  pointer-events: none;
+  will-change: transform;
+}
+
+@keyframes hero-aura {
+  from {
+    transform: translate3d(-1.5%, -1%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(1.5%, 1.5%, 0) scale(1.04);
+  }
+}
+
+.hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 4.5rem 1.25rem 3.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 1.4rem;
+}
+
+.hero-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--glass);
+  animation: hero-rise 0.5s var(--ease) both;
+}
+
+/* A live dot on the eyebrow, the way the dashboard marks a healthy service. */
+.hero-eyebrow::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.hero h1 {
+  margin: 0;
+  font-family: var(--font-headline);
+  font-weight: 700;
+  /* Proportional shrink: 32px at 390px, 54px at the cap. */
+  font-size: clamp(2rem, 4.5vw + 0.9rem, 3.4rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+  max-width: 22ch;
+  animation: hero-rise 0.5s var(--ease) 0.05s both;
+}
+
+.hero-sub {
+  margin: 0;
+  max-width: 44rem;
+  color: var(--text-muted);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  animation: hero-rise 0.5s var(--ease) 0.12s both;
+}
+
+.hero-sub strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.6rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Install block: the primary element, the way the dashboard renders a command
+   it wants you to run — mono type on a raised surface with a labelled header
+   row. The header carries a copy button; the JS types the command once. */
+.hero-install {
+  width: 100%;
+  max-width: 44rem;
+  margin: 0.4rem 0 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  text-align: left;
+  overflow: hidden;
+  animation: hero-rise 0.5s var(--ease) 0.2s both;
+}
+
+/* The brand-blue pulse: three soft passes on the border glow, then rest —
+   present without being a disco. */
+.hero-install {
+  animation: hero-rise 0.5s var(--ease) 0.2s both,
+    install-pulse 2.6s var(--ease) 0.9s 3;
+}
+
+@keyframes install-pulse {
+  0%, 100% {
+    box-shadow: var(--shadow);
+  }
+  50% {
+    box-shadow: var(--shadow),
+      0 0 0 3px color-mix(in srgb, var(--brand) 24%, transparent);
+  }
+}
+
+.install-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.install-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-subtle);
+}
+
+.install-copy {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.install-copy:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.install-copy:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+.hero-install pre {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--text);
+  /* Own horizontal scroll: the one unbreakable long URL never widens the page. */
+  -webkit-overflow-scrolling: touch;
+}
+
+.install-caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  margin-left: 0.15em;
+  vertical-align: text-bottom;
+  background: var(--brand);
+  animation: caret-blink 0.9s steps(2, start) infinite;
+}
+
+@keyframes caret-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+/* Actions: the dashboard's button pair — a solid accent fill carrying
+   near-black ink (white is only 3.7:1 on the electric blue, so dark buttons
+   carry #0a0c10 ink per --9x-accent-ink), and a ghost beside it. */
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+  margin: 0.6rem 0 0;
+  animation: hero-rise 0.5s var(--ease) 0.3s both;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  padding: 0.6rem 1.1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--brand);
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.btn-primary {
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+
+.btn-primary:hover {
+  color: var(--brand-ink);
+  background: color-mix(in srgb, var(--brand) 88%, var(--brand-ink));
+}
+
+.btn-ghost {
+  background: none;
+  color: var(--link);
+}
+
+.btn-ghost:hover {
+  background: var(--surface-2);
+  color: var(--link-hover);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* Feature chips: the dashboard's pill badges, staggered left to right. */
+.hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hero-chips li {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--glass);
+  animation: chip-in 0.45s var(--ease) both;
+}
+
+.hero-chips li::before {
+  content: "";
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--brand);
+  flex-shrink: 0;
+}
+
+/* Left-to-right stagger, one chip at a time. */
+.hero-chips li:nth-child(1) { animation-delay: 0.3s; }
+.hero-chips li:nth-child(2) { animation-delay: 0.38s; }
+.hero-chips li:nth-child(3) { animation-delay: 0.46s; }
+.hero-chips li:nth-child(4) { animation-delay: 0.54s; }
+.hero-chips li:nth-child(5) { animation-delay: 0.62s; }
+.hero-chips li:nth-child(6) { animation-delay: 0.7s; }
+
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.4rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Live numbers — only what the build could compute. The stat block mirrors the
+   dashboard's stat cards: mono figure, uppercase label, card surface. */
+.hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+  animation: hero-rise 0.5s var(--ease) 0.55s both;
+}
+
+.hero-stat {
+  min-width: 8.5rem;
+  padding: 0.75rem 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.hero-stat dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 1.375rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.hero-stat dt {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-subtle);
+  margin-top: 0.2rem;
+}
+
+/* The dashboard screenshot in a framed panel: real capture, brand radius,
+   the elevated shadow with the faint accent glow the dark theme ships. */
+.hero-shot {
+  width: 100%;
+  max-width: 56rem;
+  margin: 1.6rem 0 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 0.6rem;
+  animation: hero-rise 0.6s var(--ease) 0.45s both;
+}
+
+.hero-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: calc(var(--radius-lg) - 4px);
+  border: 1px solid var(--border-subtle);
+}
+
+.hero-shot figcaption {
+  font-family: var(--font-mono);
+  font-size: 0.71875rem;
+  color: var(--text-subtle);
+  text-align: center;
+  padding: 0.6rem 0.5rem 0.25rem;
+}
+
+/* ── Landing sections ─────────────────────────────────────────────────────── */
+
+.landing {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 3.5rem 1.25rem 1rem;
+}
+
+.landing section + section {
+  margin-top: 3.5rem;
+}
+
+.landing-kicker {
+  font-family: var(--font-mono);
+  font-size: 0.71875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--brand);
+  margin: 0 0 0.4rem;
+}
+
+.landing h2 {
+  font-family: var(--font-headline);
+  font-size: clamp(1.5rem, 2.6vw + 0.6rem, 2.1rem);
+  letter-spacing: -0.02em;
+  margin: 0 0 0.5rem;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.landing-lede {
+  color: var(--text-muted);
+  max-width: 44rem;
+  margin: 0 0 1.75rem;
+}
+
+/* Feature cards — the dashboard's card recipe: surface, hairline border,
+   panel radius, roomy padding. Numbers 01-04 echo the spec's numbered-card
+   pattern; the copy is the README's own feature text, condensed. */
+.feature-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 40rem) {
+  .feature-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.feature-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.4rem 1.4rem 1.5rem;
+  transition: border-color 0.15s var(--ease);
+}
+
+.feature-card:hover {
+  border-color: color-mix(in srgb, var(--brand) 38%, var(--border));
+}
+
+.feature-num {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--brand);
+  display: inline-block;
+  margin-bottom: 0.7rem;
+}
+
+.feature-card h3 {
+  font-family: var(--font-headline);
+  font-size: 1.125rem;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.5rem;
+}
+
+.feature-card p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.feature-card code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--text);
+}
+
+/* Quickstart steps. */
+.steps {
+  display: grid;
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.step {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.4rem;
+  /* A grid item's min-width is auto by default, so a long unbreakable line in
+     the code block below would size the track and push the page wider than a
+     phone viewport. min-width: 0 hands the width back to the pre's own
+     horizontal scroll — the same fix the wiki shell documents for its article
+     column. */
+  min-width: 0;
+}
+
+.step > h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  font-family: var(--font-headline);
+  font-size: 1.0625rem;
+  margin: 0 0 0.6rem;
+}
+
+.step > h3::before {
+  counter-increment: step;
+  content: "0" counter(step);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--brand);
+}
+
+.step p {
+  margin: 0 0 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+/* Code blocks inside steps reuse the hero install chrome, minus the pulse. */
+.codeblock {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.codeblock pre {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--text);
+  -webkit-overflow-scrolling: touch;
+}
+
+.codeblock .install-head {
+  padding: 0.4rem 0.65rem 0.4rem 1rem;
+}
+
+/* FAQ: native disclosure, styled like a quiet list of dashboard rows. */
+.faq-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.faq-list details {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+}
+
+.faq-list summary {
+  cursor: pointer;
+  font-family: var(--font-headline);
+  font-weight: 600;
+  font-size: 1rem;
+  padding: 0.15rem 0;
+}
+
+.faq-list summary:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.faq-list details[open] summary {
+  color: var(--link);
+}
+
+.faq-list details p {
+  margin: 0.6rem 0 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+
+/* ── README section (the Pages contract: the full README on the homepage) ── */
+
+.readme-head {
+  max-width: 52rem;
+  margin: 3.5rem auto 0;
+  padding: 1.25rem 1.25rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+}
+
+.readme-head .landing-kicker {
+  margin: 0;
+}
+
+.readme-head p {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-subtle);
+}
+
+/* ── Prose (README + wiki article bodies) ────────────────────────────────── */
+
 .prose {
   max-width: 52rem;
   margin: 0 auto;
@@ -228,6 +973,7 @@ h1,
 h2,
 h3,
 h4 {
+  font-family: var(--font-headline);
   line-height: 1.25;
   letter-spacing: -0.015em;
   margin: 2.4rem 0 0.9rem;
@@ -280,9 +1026,8 @@ h4 {
   margin: 2rem 0;
 }
 
-/* The reading measure lives in the wiki template's own stylesheet, scoped to
-   the two-column shell it was designed for. Setting it here would apply the cap
-   to the project page too, which has no sidebar and wants the full width. */
+/* An image is reserved before it arrives, so the text does not jump when one
+   loads. Without the aspect box a lazy gallery reflows on every scroll. */
 .prose img {
   max-width: 100%;
   height: auto;
@@ -292,8 +1037,7 @@ h4 {
   display: block;
   margin-inline: auto;
 }
-/* An image is reserved before it arrives, so the text does not jump when one
-   loads. Without the aspect box a lazy gallery reflows on every scroll. */
+
 .prose img[width][height] {
   aspect-ratio: attr(width) / attr(height);
 }
@@ -377,8 +1121,10 @@ h4 {
   outline-offset: 2px;
 }
 
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+
 .colophon {
-  max-width: 52rem;
+  max-width: 60rem;
   margin: 0 auto;
   padding: 2rem 1.25rem 3.5rem;
   border-top: 1px solid var(--border);
@@ -389,4 +1135,49 @@ h4 {
 .colophon code {
   font-family: var(--font-mono);
   font-size: 0.9em;
+}
+
+.colophon-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.4rem;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.colophon-links a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.colophon-links a:hover {
+  color: var(--link);
+  text-decoration: underline;
+}
+
+.colophon .attribution {
+  margin: 0.75rem 0 0;
+  color: var(--text-subtle);
+  font-size: 0.8125rem;
+}
+
+/* ── Reduced motion: the hero stands still, everything readable at once ──── */
+
+@media (prefers-reduced-motion: reduce) {
+  .hero::after,
+  .hero-eyebrow,
+  .hero h1,
+  .hero-sub,
+  .hero-install,
+  .hero-stats,
+  .hero-shot,
+  .hero-chips li {
+    animation: none;
+  }
+  .install-caret {
+    display: none;
+  }
 }

@@ -87,7 +87,7 @@ build: web-build
 build-optimized: web-build
 	CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/9routerx/
 
-# `PORT=888 ./9routerx` is POSIX env-assignment prefix syntax. cmd.exe does
+# `PORT=20128 ./9routerx` is POSIX env-assignment prefix syntax. cmd.exe does
 # not parse it: it tried to execute a program literally named "PORT" and failed
 # with "'PORT' is not recognized as an internal or external command". GNU Make's
 # export directive is portable, so use it and drop the prefix entirely.
@@ -113,7 +113,7 @@ ifneq ($(origin PONYTAIL),file)
 export PONYTAIL
 endif
 
-## run — start proxy (PORT=888)
+## run — start proxy (PORT=20128)
 run: build
 	$(BINARY) $(if $(RTK),--rtk=$(RTK)) $(if $(CAVEMAN),--caveman=$(CAVEMAN)) $(if $(PONYTAIL),--ponytail=$(PONYTAIL)) --auto-update=$(AUTO_UPDATE)
 
@@ -121,7 +121,7 @@ run: build
 dev:
 	go run -ldflags="$(LDFLAGS)" ./cmd/9routerx/ $(if $(RTK),--rtk=$(RTK)) $(if $(CAVEMAN),--caveman=$(CAVEMAN)) $(if $(PONYTAIL),--ponytail=$(PONYTAIL)) --auto-update=$(AUTO_UPDATE)
 
-## web-dev — Vite dev server (HMR) on :5173, API proxied to Go :888. FE changes hot-reload without rebuilding the binary.
+## web-dev — Vite dev server (HMR) on :5173, API proxied to Go :20128. FE changes hot-reload without rebuilding the binary.
 web-dev:
 	cd web && bun run dev
 
@@ -213,7 +213,7 @@ bench-go:
 ## cross — cross-compile Linux/macOS/Windows release binaries
 #
 # `GOOS=linux GOARCH=amd64 go build` is a POSIX env-assignment prefix, and
-# cmd.exe chokes on it the same way it choked on `PORT=888 ./9routerx`.
+# cmd.exe chokes on it the same way it choked on `PORT=20128 ./9routerx`.
 # Instead the per-target OS/ARCH go through `export`, which is a Make directive
 # and therefore identical under sh and cmd. The export is scoped to cross-one
 # so an empty GOARCH can never leak into the normal build target.

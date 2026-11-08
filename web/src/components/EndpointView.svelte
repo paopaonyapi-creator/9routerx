@@ -74,8 +74,8 @@
   // that could not be masked at all, which made the other two look optional.
   let showLocalUrl = $state(true)
 
-  // Origin resolution (SSR fallback uses the Go default port 888)
-  let localOrigin = $state('http://localhost:888')
+  // Origin resolution (SSR fallback uses the Go default port 20128)
+  let localOrigin = $state('http://localhost:20128')
   let localEndpoint = $derived(`${localOrigin}/v1`)
   onMount(() => {
     if (typeof window !== 'undefined') {
@@ -1928,8 +1928,8 @@
             {#if tunnelMode === 'named'}
               <!-- The origin the operator must configure on the Cloudflare side.
                    Shown from the running gateway rather than typed out, because a
-                   stale port here is what sends the connector at localhost:20128
-                   while the gateway listens on 888.
+                   stale port here is what sends the connector at the wrong
+                   address while the gateway listens on 20128.
 
                    It sits above the hostname field on purpose: the operator reads
                    what to point at on the Cloudflare side, then types the hostname

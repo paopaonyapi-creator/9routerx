@@ -17,7 +17,7 @@ Both projects share the same database and schema. What differs is the runtime.
 | Database | SQLite (modernc, pure Go) | SQLite |
 | Schema | Same, additive | Same |
 | Docker | Single binary | Node |
-| Port | `888` | `20128` |
+| Port | `20128` | `20128` |
 
 ## Guaranteed identical
 

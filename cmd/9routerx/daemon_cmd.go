@@ -22,7 +22,7 @@ import (
 func daemonURL() string {
 	cfg := config.LoadConfig()
 	if cfg.Port <= 0 {
-		return "http://127.0.0.1:888"
+		return "http://127.0.0.1:20128"
 	}
 	port := strconv.Itoa(cfg.Port)
 	// BIND_ADDR defaults to a wildcard bind, which is not dialable; only an

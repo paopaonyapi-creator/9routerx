@@ -38,12 +38,12 @@ section: Getting Started
 
 ```bash
 9routerx
-# Dashboard: http://localhost:888 (initial password: 123456)
+# Dashboard: http://localhost:20128 (initial password: 123456)
 ```
 
 Dashboard → Providers → connect **Kiro AI** (≈50 free credits per month) or
 **OpenCode Free** (no auth), then point your CLI tool at
-`http://localhost:888/v1`.
+`http://localhost:20128/v1`.
 
 ## Which version am I on?
 

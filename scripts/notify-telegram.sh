@@ -96,7 +96,7 @@ if [ -z "$entries" ]; then
 fi
 
 release_url="https://github.com/yanstd888/9routerx/releases/tag/${TAG}"
-docker_image="${DOCKER_IMAGE:-yanstd888/9routerx}"
+docker_image="${DOCKER_IMAGE:-ghcr.io/yanstd888/9routerx}"
 
 # A prerelease must not read like a stable install: it is absent from `latest`,
 # so anyone pulling `latest` still gets the previous version.

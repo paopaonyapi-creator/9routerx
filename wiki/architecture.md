@@ -10,7 +10,7 @@ section: Under the Hood
 ┌─────────────┐
 │  CLI tool   │  (Claude Code, Codex, OpenClaw, Cursor, Cline...)
 └──────┬──────┘
-       │ http://localhost:888/v1
+       │ http://localhost:20128/v1
        ↓
 ┌─────────────────────────────────────────────┐
 │         9RouterX (Smart Router)           │

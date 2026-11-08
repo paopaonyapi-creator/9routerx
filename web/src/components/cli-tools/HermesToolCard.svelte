@@ -65,7 +65,7 @@
   let tailscaleUrl = $state('')
 
   // SSR fallback uses the Go default port; the live origin wins on mount.
-  let localOrigin = $state(typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:888')
+  let localOrigin = $state(typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:20128')
   $effect(() => {
     if (typeof window !== 'undefined') localOrigin = window.location.origin
   })
