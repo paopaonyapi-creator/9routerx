@@ -238,6 +238,12 @@ func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) 
 	// the real server.
 	r.Get("/api/providers/health", dashH.HandleGetProvidersHealth)
 	r.Post("/api/providers/health/reset", dashH.HandleResetProvidersHealth)
+	// Free-tier live counters and the TLS-stealth banner status are mounted in
+	// dashboard.RegisterRoutes (a tests-only table) too; registered there alone
+	// they 404 on the real server — the free-tier page polls /live every 60s
+	// and the banner silently hides on the 404.
+	r.Get("/api/free-tier/live", dashH.HandleGetFreeTierLive)
+	r.Get("/api/tls-stealth/status", dashH.HandleGetTLSStealthStatus)
 	// Usage & Quota Endpoints (dashboard quota tracker, usage stats, and topology stream)
 	r.Get("/api/usage/stream", HandleUsageStream(repo))
 	r.Get("/usage/stream", HandleUsageStream(repo))
