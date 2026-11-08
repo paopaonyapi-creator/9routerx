@@ -813,3 +813,131 @@ func TestCheckUpdate_UpToDateManifestNeedsNoDigest(t *testing.T) {
 		t.Errorf("Source = %q, want manifest", info.Source)
 	}
 }
+
+// The manifest the release pipeline publishes carries a per-platform digest
+// map (sha256s, filled from SHA256SUMS.txt), because one flat sha256 cannot
+// describe five release assets. This pins the end of the field failure: a
+// manifest that names THIS platform's digest answers the update check by
+// itself — the GitHub Releases fallback, whose transient 500s users saw in
+// the v1.1.0 logs, is never consulted.
+func TestCheckUpdate_ManifestPerPlatformSHA256(t *testing.T) {
+	platformKey := fmt.Sprintf("%s_%s", runtime.GOOS, runtime.GOARCH)
+	platformDigest := strings.Repeat("9f", 32)
+	otherDigest := strings.Repeat("01", 32)
+	// Decoy entries for the other platforms. platformKey goes in last so a
+	// decoy cannot shadow the real entry on whichever OS runs the test.
+	digests := map[string]string{
+		"linux_amd64":   otherDigest,
+		"linux_arm64":   otherDigest,
+		"darwin_amd64":  otherDigest,
+		"darwin_arm64":  otherDigest,
+		"windows_amd64": otherDigest,
+	}
+	digests[platformKey] = platformDigest
+
+	var releaseRequests int
+	server := releaseServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/version.json" {
+			w.Header().Set("Content-Type", "application/json")
+			json.MarshalWrite(w, map[string]any{
+				"latestVersion": "1.9.7",
+				"downloadUrl":   "https://example.invalid/releases/latest",
+				"downloadUrls": map[string]string{
+					platformKey: "https://example.invalid/9routerx-" + platformKey,
+				},
+				"sha256s": digests,
+			})
+			return
+		}
+		releaseRequests++
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+
+	previousAPI := githubReleasesAPI
+	githubReleasesAPI = server.URL + "/repos/%s/releases/latest"
+	t.Cleanup(func() { githubReleasesAPI = previousAPI })
+	previousURL := DefaultUpdateURL
+	DefaultUpdateURL = server.URL + "/version.json"
+	t.Cleanup(func() { DefaultUpdateURL = previousURL })
+
+	previousVersion := CurrentVersion
+	CurrentVersion = "1.9.6"
+	t.Cleanup(func() { CurrentVersion = previousVersion })
+
+	info, err := CheckUpdate(context.Background())
+	if err != nil {
+		t.Fatalf("CheckUpdate failed: %v", err)
+	}
+	if info.SHA256 != platformDigest {
+		t.Errorf("SHA256 = %q, want this platform's digest %q", info.SHA256, platformDigest)
+	}
+	if info.DownloadURL != "https://example.invalid/9routerx-"+platformKey {
+		t.Errorf("DownloadURL = %q, want this platform's asset URL", info.DownloadURL)
+	}
+	if releaseRequests != 0 {
+		t.Errorf("consulted the GitHub fallback %d times for a manifest that already carried the digest", releaseRequests)
+	}
+}
+
+// Digest precedence: a per-platform entry is authoritative over the legacy
+// flat sha256 (which was only ever "the digest of the platform asset", a
+// statement that is wrong on the four other platforms), and the map's
+// "default" fills in only when nothing more specific names a digest.
+func TestCheckUpdate_ManifestDigestPrecedence(t *testing.T) {
+	platformKey := fmt.Sprintf("%s_%s", runtime.GOOS, runtime.GOARCH)
+	platformDigest := strings.Repeat("aa", 32)
+	flatDigest := strings.Repeat("bb", 32)
+	defaultDigest := strings.Repeat("cc", 32)
+
+	serve := func(manifest map[string]any) (*UpdateInfo, error) {
+		server := releaseServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.MarshalWrite(w, manifest)
+		})
+		previousURL := DefaultUpdateURL
+		DefaultUpdateURL = server.URL + "/version.json"
+		t.Cleanup(func() { DefaultUpdateURL = previousURL })
+		return checkManifest(context.Background(), server.URL+"/version.json")
+	}
+
+	t.Run("per-platform beats flat", func(t *testing.T) {
+		info, err := serve(map[string]any{
+			"latestVersion": "2.0.0",
+			"sha256":        flatDigest,
+			"sha256s":       map[string]string{platformKey: platformDigest},
+		})
+		if err != nil {
+			t.Fatalf("checkManifest failed: %v", err)
+		}
+		if info.SHA256 != platformDigest {
+			t.Errorf("SHA256 = %q, want the per-platform digest %q", info.SHA256, platformDigest)
+		}
+	})
+
+	t.Run("default fills when flat is absent", func(t *testing.T) {
+		info, err := serve(map[string]any{
+			"latestVersion": "2.0.0",
+			"sha256s":       map[string]string{"default": defaultDigest},
+		})
+		if err != nil {
+			t.Fatalf("checkManifest failed: %v", err)
+		}
+		if info.SHA256 != defaultDigest {
+			t.Errorf("SHA256 = %q, want the default digest %q", info.SHA256, defaultDigest)
+		}
+	})
+
+	t.Run("flat beats default", func(t *testing.T) {
+		info, err := serve(map[string]any{
+			"latestVersion": "2.0.0",
+			"sha256":        flatDigest,
+			"sha256s":       map[string]string{"default": defaultDigest},
+		})
+		if err != nil {
+			t.Fatalf("checkManifest failed: %v", err)
+		}
+		if info.SHA256 != flatDigest {
+			t.Errorf("SHA256 = %q, want the flat digest %q", info.SHA256, flatDigest)
+		}
+	})
+}

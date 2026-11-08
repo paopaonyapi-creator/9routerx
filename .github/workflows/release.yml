@@ -329,6 +329,116 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # version.json on main is the manifest every install polls
+      # (raw.githubusercontent.com/<owner>/9routerx/main/version.json). Since
+      # #72 made the digest mandatory, a manifest without one is a dead end:
+      # CheckUpdate refuses to answer from it whenever it advertises an update,
+      # and the install then rides on the Releases API fallback — which returned
+      # HTTP 500 for some users on v1.1.0, leaving "manifest error (manifest
+      # carries no sha256 ...), github releases error (github releases HTTP 500)".
+      # The digests cannot exist before the binaries do, so bump-version.sh can
+      # never write them; this step computes them from the SHA256SUMS.txt the
+      # cross target just produced and pushes the per-platform sha256s /
+      # downloadUrls into version.json on main.
+      #
+      # Stable tags only. version.json is the stable manifest: for an
+      # experimental tag bump-version.sh leaves it advertising the last stable
+      # release, and publishing exp digests here would pair them with a
+      # latestVersion the updater would then offer to every install.
+      - name: Publish update manifest (sha256 per platform)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && needs.channel.outputs.prerelease == 'false' }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          ASSET_BASE="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/"
+
+          # SHA256SUMS.txt lines are "<digest><2 spaces><name>" (sha256sum's
+          # text-mode separator). Split on the two spaces rather than on any
+          # whitespace so the binary-mode " *name" variant would still parse.
+          SUMS_ARGS=()
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            digest="${line%%  *}"
+            name="${line##*  }"
+            case "$name" in
+              9routerx-linux-amd64|9routerx-linux-arm64|9routerx-darwin-amd64|9routerx-darwin-arm64|9routerx-windows-amd64.exe)
+                # The manifest digest is what PerformSelfUpdate verifies the
+                # downloaded asset against; anything shorter than 64 lowercase
+                # hex chars would verify nothing.
+                if ! printf '%s' "$digest" | grep -Eq '^[0-9a-f]{64}$'; then
+                  echo "::error::SHA256SUMS.txt has a malformed digest for $name: $digest"
+                  exit 1
+                fi
+                SUMS_ARGS+=("$name" "$digest")
+                ;;
+            esac
+          done < SHA256SUMS.txt
+          if [ "${#SUMS_ARGS[@]}" -ne 10 ]; then
+            echo "::error::expected 5 binary assets in SHA256SUMS.txt, found $(( ${#SUMS_ARGS[@]} / 2 ))"
+            exit 1
+          fi
+          SHA256S_JSON=$(jq -n --args '$ARGS.positional as $a | reduce range(0; ($a|length); 2) as $i ({}; .[$a[$i]] = $a[$i+1])' "${SUMS_ARGS[@]}")
+
+          # downloadUrls uses the same "<goos>_<goarch>" keys the updater looks
+          # up (checkManifest), so a manifest install downloads the real asset
+          # instead of the releases/latest page the flat downloadUrl holds.
+          DOWNLOAD_URLS_JSON=$(jq -n --arg base "$ASSET_BASE" '{
+            linux_amd64:   ($base + "9routerx-linux-amd64"),
+            linux_arm64:   ($base + "9routerx-linux-arm64"),
+            darwin_amd64:  ($base + "9routerx-darwin-amd64"),
+            darwin_arm64:  ($base + "9routerx-darwin-arm64"),
+            windows_amd64: ($base + "9routerx-windows-amd64.exe")
+          }')
+
+          jq -n \
+            --arg latestVersion "$VERSION" \
+            --arg downloadUrl "$(jq -r '.downloadUrl // ""' version.json)" \
+            --argjson downloadUrls "$DOWNLOAD_URLS_JSON" \
+            --argjson sha256s "$SHA256S_JSON" \
+            --rawfile releaseNotes /tmp/notes.md \
+            --arg releaseUrl "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}" \
+            --arg publishedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{latestVersion: $latestVersion,
+              downloadUrl: $downloadUrl,
+              downloadUrls: $downloadUrls,
+              sha256s: $sha256s,
+              releaseNotes: $releaseNotes,
+              releaseUrl: $releaseUrl,
+              publishedAt: $publishedAt}' > /tmp/version.json
+
+          # One missing digest would reintroduce the dead end this step exists
+          # to close, so the manifest is verified before it leaves the runner.
+          if [ "$(jq -r '.sha256s | length' /tmp/version.json)" -ne 5 ]; then
+            echo "::error::built manifest does not carry 5 sha256 entries"
+            exit 1
+          fi
+
+          # The tag keeps its own (digest-less) version.json — that is fine,
+          # installs poll main. The checkout is detached at the tag, so the
+          # commit is built on origin/main and pushed with a retry in case main
+          # moved while this release was building.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git checkout -B publish-manifest FETCH_HEAD
+            cp /tmp/version.json version.json
+            if git diff --quiet HEAD -- version.json; then
+              echo "manifest on main already current; nothing to publish"
+              exit 0
+            fi
+            git add version.json
+            git commit -m "release: publish v$VERSION update manifest (sha256 per platform)"
+            if git push origin HEAD:main; then
+              echo "update manifest published to main"
+              exit 0
+            fi
+            echo "push rejected (main moved mid-release); retrying"
+            sleep 5
+          done
+          echo "::error::could not push the update manifest to main after 3 attempts"
+          exit 1
+
   docker:
     # GHCR is the primary container channel (upstream decolua/9router parity:
     # ghcr.io/<owner>/9routerx). It needs no secrets — the built-in GITHUB_TOKEN

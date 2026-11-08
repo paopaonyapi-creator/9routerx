@@ -346,9 +346,19 @@ func checkManifest(ctx context.Context, url string) (*UpdateInfo, error) {
 		ReleaseNotes  string            `json:"releaseNotes"`
 		Notes         string            `json:"notes"`
 		SHA256        string            `json:"sha256"`
-		MinVersion    string            `json:"minVersion"`
-		ReleaseURL    string            `json:"releaseUrl"`
-		PublishedAt   string            `json:"publishedAt"`
+		// SHA256s maps "<goos>_<goarch>" (the same keys downloadUrls uses) to
+		// the digest of the asset that platform installs. One flat sha256
+		// cannot describe a multi-platform release, so the release pipeline
+		// (release.yml) fills this map from SHA256SUMS.txt at publish time and
+		// PerformSelfUpdate verifies the downloaded asset against the entry
+		// selected here. A manifest advertising an update with neither a flat
+		// digest nor a per-platform one stays a dead end (#72): the fallback
+		// to the Releases API that used to fill the gap is exactly what a
+		// transient GitHub 5xx took out in the field.
+		SHA256s     map[string]string `json:"sha256s"`
+		MinVersion  string            `json:"minVersion"`
+		ReleaseURL  string            `json:"releaseUrl"`
+		PublishedAt string            `json:"publishedAt"`
 	}
 	if err := json.Unmarshal(body, &remote); err != nil {
 		return nil, err
@@ -386,6 +396,18 @@ func checkManifest(ctx context.Context, url string) (*UpdateInfo, error) {
 		downloadURL = remote.DownloadURL
 	}
 
+	// Digest precedence mirrors downloadUrls: the entry for THIS platform is
+	// authoritative, the legacy flat sha256 (the old contract's "digest of the
+	// platform asset") answers second, and the map's "default" fills only when
+	// neither names one. A flat digest cannot be trusted for a platform it was
+	// not computed for — which is exactly why the map exists.
+	sha256 := remote.SHA256
+	if digest := remote.SHA256s[platformKey]; digest != "" {
+		sha256 = digest
+	} else if sha256 == "" {
+		sha256 = remote.SHA256s["default"]
+	}
+
 	return &UpdateInfo{
 		CurrentVersion: CurrentVersion,
 		LatestVersion:  latestVersion,
@@ -396,7 +418,7 @@ func checkManifest(ctx context.Context, url string) (*UpdateInfo, error) {
 		OS:             runtime.GOOS,
 		Arch:           runtime.GOARCH,
 		CheckedAt:      time.Now().UTC().Format(time.RFC3339),
-		SHA256:         remote.SHA256,
+		SHA256:         sha256,
 		MinVersion:     remote.MinVersion,
 		ReleaseURL:     remote.ReleaseURL,
 		PublishedAt:    remote.PublishedAt,
