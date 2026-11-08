@@ -27,9 +27,9 @@ type ProviderHealthResponse struct {
 
 // ProvidersHealthResponse is GET /api/providers/health's payload.
 type ProvidersHealthResponse struct {
-	Providers  []ProviderHealthResponse `json:"providers"`
-	CoolingNow int                      `json:"coolingNow"`
-	GeneratedAt string                  `json:"generatedAt"`
+	Providers   []ProviderHealthResponse `json:"providers"`
+	CoolingNow  int                      `json:"coolingNow"`
+	GeneratedAt string                   `json:"generatedAt"`
 }
 
 // HandleGetProvidersHealth handles GET /api/providers/health.

@@ -91,7 +91,7 @@ func TestResetForRegime_HeaderOverride(t *testing.T) {
 	// x-ratelimit-reset also read.
 	header = http.Header{"X-RateLimit-Reset": []string{"600"}}
 	reset, _ = ResetForRegime(RegimeRecurringDaily, eventAt, header, 1)
-	if !reset.Equal(eventAt.Add(10*time.Minute)) {
+	if !reset.Equal(eventAt.Add(10 * time.Minute)) {
 		t.Errorf("x-ratelimit-reset 600s reset = %v, want %v", reset, eventAt.Add(10*time.Minute))
 	}
 
