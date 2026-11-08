@@ -141,7 +141,7 @@ func (h *ChatHandler) LogFailure(
 		"cacheSource":    info.CacheSource,
 		"status":         status,
 		"timestamp":      now.Format("2006-01-02T15:04:05.000Z"),
-		"startedAt":      startedAt.Format("2006-01-02T15:04:05.000Z"),
+		"startedAt":      startedAt.UTC().Format("2006-01-02T15:04:05.000Z"),
 		"endedAt":        now.Format("2006-01-02T15:04:05.000Z"),
 		"latency": map[string]int64{
 			"ttft":  metricsTTFT(metrics),
@@ -484,7 +484,7 @@ func (h *ChatHandler) logUsage(ctx context.Context, info *UsageLogInfo, usage *t
 		"cacheSource":    info.CacheSource,
 		"status":         "success",
 		"timestamp":      now.Format("2006-01-02T15:04:05.000Z"),
-		"startedAt":      startedAtUsage.Format("2006-01-02T15:04:05.000Z"),
+		"startedAt":      startedAtUsage.UTC().Format("2006-01-02T15:04:05.000Z"),
 		"endedAt":        now.Format("2006-01-02T15:04:05.000Z"),
 		"latency":        map[string]int64{"ttft": ttftMs, "total": latencyMs},
 		"tokens":         tokensMap,
