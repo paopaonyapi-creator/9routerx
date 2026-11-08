@@ -110,6 +110,24 @@ func (h *DashboardHandler) HandleGetProxyPools(w http.ResponseWriter, r *http.Re
 	})
 }
 
+// validateProxyURL rejects pool URLs a Go http.Client could never dial: the
+// scheme must be http/https and the host must be present. url.Parse alone is
+// not enough — it happily accepts "not-a-url" as a relative path with an
+// empty host, which used to persist as an unusable pool.
+func validateProxyURL(raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("proxy URL is not parseable: %v", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("proxy URL scheme must be http or https, got %q", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("proxy URL is missing a host")
+	}
+	return nil
+}
+
 // HandleCreateProxyPool handles POST /api/proxy-pools.
 func (h *DashboardHandler) HandleCreateProxyPool(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
@@ -142,6 +160,11 @@ func (h *DashboardHandler) HandleCreateProxyPool(w http.ResponseWriter, r *http.
 		} else {
 			req.Type = "http"
 		}
+	}
+
+	if err := validateProxyURL(req.ProxyURL); err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	poolData := db.ProxyPoolData{
@@ -180,6 +203,13 @@ func (h *DashboardHandler) HandleUpdateProxyPool(w http.ResponseWriter, r *http.
 	if err := json.Unmarshal(body, &updates); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid JSON")
 		return
+	}
+
+	if rawURL, ok := updates["proxyUrl"].(string); ok {
+		if err := validateProxyURL(rawURL); err != nil {
+			handlerutil.WriteJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 
 	if err := h.Repo.UpdateProxyPool(id, updates); err != nil {
