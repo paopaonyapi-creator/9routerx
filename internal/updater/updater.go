@@ -32,7 +32,7 @@ import (
 // CurrentVersion is the active 9routerx application version.
 // Can be overridden at build time via -ldflags "-X 9routerx/proxy/internal/updater.CurrentVersion=1.8.8"
 // Default fallback is read from version.json at init if not overridden.
-var CurrentVersion = "1.1.2"
+var CurrentVersion = "1.1.3"
 
 // DefaultUpdateURL is the primary remote version manifest URL.
 var DefaultUpdateURL = "https://raw.githubusercontent.com/yanstd888/9routerx/main/version.json"

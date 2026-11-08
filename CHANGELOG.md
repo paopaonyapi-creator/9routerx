@@ -14,6 +14,25 @@ Release history up to the fork point is archived in the upstream repo's
   the pending-fragment splice now lands under this Unreleased heading instead
   of above the file title.
 
+## [v1.1.3] - 2026-11-08
+
+### Added
+
+- **llms.txt** — the Pages site now publishes the LLM-crawler site map at
+  `https://yanstd888.github.io/9routerx/llms.txt`: every documentation page,
+  the registry facts (155 providers, 248 free models / 24 keyless) and the
+  quick facts AI assistants need to drive the gateway.
+- **JSON-LD structured data** — the homepage carries a schema.org
+  SoftwareApplication block (name, platforms, description, download URL) so
+  search engines render richer results for the project.
+
+### Changed
+
+- **npm package metadata** — the `9routerx` package description and keywords
+  now describe what the gateway actually does (token saver, Claude Code /
+  Cursor / Cline / Codex routing, keyless free models, MCP Server, A2A) instead
+  of five generic words.
+
 ## [v1.1.2] - 2026-11-08
 
 ### Fixed
