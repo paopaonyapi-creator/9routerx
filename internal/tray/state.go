@@ -112,12 +112,12 @@ func (s Snapshot) CanStop() bool {
 func (s Snapshot) Title() string {
 	switch s.State {
 	case StateRunning:
-		return fmt.Sprintf("9Router Go (Port %d)", s.Port)
+		return fmt.Sprintf("9RouterX (Port %d)", s.Port)
 	case StateStopped:
-		return "9Router Go (Stopped)"
+		return "9RouterX (Stopped)"
 	case StatePortConflict:
-		return fmt.Sprintf("9Router Go (Port %d in use by foreign process (PID %d))", s.Port, s.PID)
+		return fmt.Sprintf("9RouterX (Port %d in use by foreign process (PID %d))", s.Port, s.PID)
 	default:
-		return "9Router Go (Unknown)"
+		return "9RouterX (Unknown)"
 	}
 }
