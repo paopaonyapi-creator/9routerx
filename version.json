@@ -2,20 +2,20 @@
   "latestVersion": "1.1.2",
   "downloadUrl": "https://github.com/yanstd888/9routerx/releases/latest",
   "downloadUrls": {
-    "linux_amd64": "https://github.com/yanstd888/9routerx/releases/download/v1.1.1/9routerx-linux-amd64",
-    "linux_arm64": "https://github.com/yanstd888/9routerx/releases/download/v1.1.1/9routerx-linux-arm64",
-    "darwin_amd64": "https://github.com/yanstd888/9routerx/releases/download/v1.1.1/9routerx-darwin-amd64",
-    "darwin_arm64": "https://github.com/yanstd888/9routerx/releases/download/v1.1.1/9routerx-darwin-arm64",
-    "windows_amd64": "https://github.com/yanstd888/9routerx/releases/download/v1.1.1/9routerx-windows-amd64.exe"
+    "linux_amd64": "https://github.com/yanstd888/9routerx/releases/download/v1.1.2/9routerx-linux-amd64",
+    "linux_arm64": "https://github.com/yanstd888/9routerx/releases/download/v1.1.2/9routerx-linux-arm64",
+    "darwin_amd64": "https://github.com/yanstd888/9routerx/releases/download/v1.1.2/9routerx-darwin-amd64",
+    "darwin_arm64": "https://github.com/yanstd888/9routerx/releases/download/v1.1.2/9routerx-darwin-arm64",
+    "windows_amd64": "https://github.com/yanstd888/9routerx/releases/download/v1.1.2/9routerx-windows-amd64.exe"
   },
   "sha256s": {
-    "darwin_amd64": "1dcc5c3fcad46a112086efbb7acf8676bf0ddb2e83067ac877cf16eff85b8d1e",
-    "darwin_arm64": "0eb88fd6e188547a2d62f765bcb7dca1d6aa649b66c3a9743d1c3917c812c0d8",
-    "linux_amd64": "4eae4d7e8a0c21b53a8687f5a54f0542250452e90425a6a3c3e61413b4802311",
-    "linux_arm64": "e66f2632a6cefd045067884cf057ff7a44e0c27fe4f68b976c33aa68f024b558",
-    "windows_amd64": "3ebeffff74b962581f99e4709829a9386b0b880fe8f0a5ef638d71fd52e2f156"
+    "darwin_amd64": "7ba8df2f70e1077669beb86dcf98b87c72bcd8a98cf6bfc69928722f8be6b8b2",
+    "darwin_arm64": "cb8504707d154a90f20bad8f7ea5a1f83e49ad952576b3b8e9b5d038cc7562dd",
+    "linux_amd64": "6e5b7f8e200c0eb21d0fac05200865d765f50217edcfa33047c4241fd0593fee",
+    "linux_arm64": "dca050ea37163ee3b4a756faab2f686132e1522e8cb9bbde0bfdd9a6f7a2ebe7",
+    "windows_amd64": "41bb603e0e09fcb116b7dc464d4337878352047434fd9dd6fb39e6dccf2c2714"
   },
-  "releaseNotes": "\n\n### Fixed\n\n- **Tray companion name** — the Windows tray tooltip and menu header still\n  rendered the old product name (\"9Router Go (Stopped)\", \"9Router Go (Port\n  20128)\", …) on released v1.1.0 binaries. The state titles in `internal/tray`\n  now say **9RouterX** in every state (Running / Stopped / Port conflict /\n  Unknown); no user-visible \"9Router Go\" string remains in the tray tree.\n- **Tray and executable icons** — the tray icon and the Windows executables\n  still carried the old 9router-go artwork. `tools/icongen` (new) builds the\n  multi-size `.ico` (16/24/32/48/64/128/256 px frames, 32-bit BGRA + AND\n  mask) straight from the 9RouterX logo (`web/public/logo-9routerx.png`);\n  `cmd/9routerx-tray/tray.ico` is regenerated (the go:embed'd runtime tray\n  icon) and both `9routerx.exe` and `9routerx-tray.exe` now embed it as a\n  Windows resource (`rsrc_windows_amd64.syso`, generated with go-winres and\n  linked automatically by `go build`), so Explorer, the taskbar and the tray\n  all show the new icon. Regenerate after a logo change with `make icons`.\n- **Auto Update path** — `version.json` advertised 1.1.0 without a sha256,\n  and since #72 a digest-less manifest is refused by design, so every install\n  fell through to the GitHub Releases API — which returned HTTP 500 for some\n  users, ending in \"manifest error (manifest carries no sha256 for 1.1.0),\n  github releases error (github releases HTTP 500)\". The release workflow now\n  publishes per-platform `sha256s` (plus per-platform `downloadUrls`) into\n  `version.json` from SHA256SUMS.txt at release time, and `checkManifest`\n  selects the digest for the running platform, so the manifest alone carries\n  everything an install needs and the release-API fallback is no longer on\n  the critical path.\n",
-  "releaseUrl": "https://github.com/yanstd888/9routerx/releases/tag/v1.1.1",
-  "publishedAt": "2026-11-08T11:35:55Z"
+  "releaseNotes": "\n\n### Fixed\n\n- **Releases-API fallback could replace the gateway with the tray binary** —\n  caught by the v1.1.0→v1.1.1 release E2E. GitHub lists release assets\n  alphabetically, so `9routerx-tray-windows-amd64.exe` sorts before\n  `9routerx-windows-amd64.exe`, and the updater's asset matcher — which\n  substring-matches OS and arch — returned the tray. The install then\n  verified cleanly (the digest was the tray's own SHA256SUMS entry) and\n  replaced `9routerx.exe` with the systray companion. The matcher now skips\n  tray assets in both its scan and its non-checksum fallback, so the fallback\n  can only ever select the main binary, wherever the tray asset sits in the\n  list. The manifest path was never affected: `downloadUrls` names the main\n  binary per platform explicitly.\n",
+  "releaseUrl": "https://github.com/yanstd888/9routerx/releases/tag/v1.1.2",
+  "publishedAt": "2026-11-08T11:42:43Z"
 }
