@@ -355,23 +355,33 @@ jobs:
           # SHA256SUMS.txt lines are "<digest><2 spaces><name>" (sha256sum's
           # text-mode separator). Split on the two spaces rather than on any
           # whitespace so the binary-mode " *name" variant would still parse.
+          # The manifest keys are "<goos>_<goarch>" — the same keys the updater
+          # looks up (checkManifest selects sha256s[$GOOS_$GOARCH]) — so each
+          # asset name is translated to its platform key here; publishing the
+          # asset names as keys would leave every lookup empty and the update
+          # path digest-less again (that was the v1.1.1 manifest's first cut,
+          # corrected in the same release).
           SUMS_ARGS=()
           while IFS= read -r line; do
             [ -n "$line" ] || continue
             digest="${line%%  *}"
             name="${line##*  }"
             case "$name" in
-              9routerx-linux-amd64|9routerx-linux-arm64|9routerx-darwin-amd64|9routerx-darwin-arm64|9routerx-windows-amd64.exe)
-                # The manifest digest is what PerformSelfUpdate verifies the
-                # downloaded asset against; anything shorter than 64 lowercase
-                # hex chars would verify nothing.
-                if ! printf '%s' "$digest" | grep -Eq '^[0-9a-f]{64}$'; then
-                  echo "::error::SHA256SUMS.txt has a malformed digest for $name: $digest"
-                  exit 1
-                fi
-                SUMS_ARGS+=("$name" "$digest")
-                ;;
+              9routerx-linux-amd64)       key="linux_amd64" ;;
+              9routerx-linux-arm64)       key="linux_arm64" ;;
+              9routerx-darwin-amd64)      key="darwin_amd64" ;;
+              9routerx-darwin-arm64)      key="darwin_arm64" ;;
+              9routerx-windows-amd64.exe) key="windows_amd64" ;;
+              *) continue ;;
             esac
+            # The manifest digest is what PerformSelfUpdate verifies the
+            # downloaded asset against; anything shorter than 64 lowercase
+            # hex chars would verify nothing.
+            if ! printf '%s' "$digest" | grep -Eq '^[0-9a-f]{64}$'; then
+              echo "::error::SHA256SUMS.txt has a malformed digest for $name: $digest"
+              exit 1
+            fi
+            SUMS_ARGS+=("$key" "$digest")
           done < SHA256SUMS.txt
           if [ "${#SUMS_ARGS[@]}" -ne 10 ]; then
             echo "::error::expected 5 binary assets in SHA256SUMS.txt, found $(( ${#SUMS_ARGS[@]} / 2 ))"
@@ -407,9 +417,16 @@ jobs:
               publishedAt: $publishedAt}' > /tmp/version.json
 
           # One missing digest would reintroduce the dead end this step exists
-          # to close, so the manifest is verified before it leaves the runner.
+          # to close, so the manifest is verified before it leaves the runner —
+          # both the entry count and the exact platform key set: a key the
+          # updater cannot look up (an asset name, say) is as good as missing.
           if [ "$(jq -r '.sha256s | length' /tmp/version.json)" -ne 5 ]; then
             echo "::error::built manifest does not carry 5 sha256 entries"
+            exit 1
+          fi
+          KEYS="$(jq -r '.sha256s | keys | sort | join(",")' /tmp/version.json)"
+          if [ "$KEYS" != "darwin_amd64,darwin_arm64,linux_amd64,linux_arm64,windows_amd64" ]; then
+            echo "::error::manifest sha256s has the wrong keys: $KEYS"
             exit 1
           fi
 
