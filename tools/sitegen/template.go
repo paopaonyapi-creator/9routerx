@@ -213,6 +213,21 @@ const pageTemplate = `<!doctype html>
     <link rel="icon" type="image/png" href="favicon-32x32.png" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <meta property="og:image" content="` + ogImageURL + `" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "9RouterX",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Linux, macOS, Windows, FreeBSD",
+    "description": "Single-binary Go AI router, local LLM gateway and token saver. Route Claude Code, Cursor, Codex and other AI coding agents across 155 providers, 28 OAuth integrations and 248 free models (24 keyless) with 20-40% token savings.",
+    "url": "https://yanstd888.github.io/9routerx/",
+    "downloadUrl": "https://github.com/yanstd888/9routerx/releases",
+    "softwareVersion": "1.1.3",
+    "author": { "@type": "Person", "name": "Muhammad Dian", "url": "https://yanstd888.github.io/" },
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
