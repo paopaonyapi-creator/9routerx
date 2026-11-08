@@ -306,6 +306,9 @@ jobs:
       # rename to 9routerx only changed the local dev binary (BINARY_NAME) and
       # the installed file name — not the published release artifacts.
       - name: Upload binaries to release
+        # Manual dispatches from main have no tag: skip the release upload
+        # (binaries are still built as the CI proof); tag runs upload as usual.
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         uses: softprops/action-gh-release@v2
         with:
           # What marks the GitHub Release itself as experimental, which is what
