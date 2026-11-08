@@ -37,7 +37,7 @@ jobs:
   # why :latest had never moved at all. Both are replaced by the explicit
   # per-channel tag lists computed below.
   channel:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     name: Resolve release channel
     runs-on: ubuntu-latest
     outputs:
@@ -147,7 +147,7 @@ jobs:
           echo "docker:   $TAGS"
 
   binaries:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     name: Build release binaries
     needs: channel
     runs-on: ubuntu-latest
@@ -334,7 +334,7 @@ jobs:
     # push survives as an optional bonus behind that probe, and every bonus
     # step carries continue-on-error: true — a Hub outage or a revoked token
     # must not turn a release red now that the mandatory channel is GHCR.
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     name: Build and push Docker image
     needs: channel
     runs-on: ubuntu-latest
@@ -425,7 +425,7 @@ jobs:
   # this point, and a failed job here reads as "the release failed" to anyone
   # watching the run list.
   notify:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     name: Notify Telegram
     needs: [binaries, docker]
     runs-on: ubuntu-latest
