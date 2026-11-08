@@ -14,6 +14,35 @@ Release history up to the fork point is archived in the upstream repo's
   the pending-fragment splice now lands under this Unreleased heading instead
   of above the file title.
 
+## [v1.1.1] - 2026-11-08
+
+### Fixed
+
+- **Tray companion name** — the Windows tray tooltip and menu header still
+  rendered the old product name ("9Router Go (Stopped)", "9Router Go (Port
+  20128)", …) on released v1.1.0 binaries. The state titles in `internal/tray`
+  now say **9RouterX** in every state (Running / Stopped / Port conflict /
+  Unknown); no user-visible "9Router Go" string remains in the tray tree.
+- **Tray and executable icons** — the tray icon and the Windows executables
+  still carried the old 9router-go artwork. `tools/icongen` (new) builds the
+  multi-size `.ico` (16/24/32/48/64/128/256 px frames, 32-bit BGRA + AND
+  mask) straight from the 9RouterX logo (`web/public/logo-9routerx.png`);
+  `cmd/9routerx-tray/tray.ico` is regenerated (the go:embed'd runtime tray
+  icon) and both `9routerx.exe` and `9routerx-tray.exe` now embed it as a
+  Windows resource (`rsrc_windows_amd64.syso`, generated with go-winres and
+  linked automatically by `go build`), so Explorer, the taskbar and the tray
+  all show the new icon. Regenerate after a logo change with `make icons`.
+- **Auto Update path** — `version.json` advertised 1.1.0 without a sha256,
+  and since #72 a digest-less manifest is refused by design, so every install
+  fell through to the GitHub Releases API — which returned HTTP 500 for some
+  users, ending in "manifest error (manifest carries no sha256 for 1.1.0),
+  github releases error (github releases HTTP 500)". The release workflow now
+  publishes per-platform `sha256s` (plus per-platform `downloadUrls`) into
+  `version.json` from SHA256SUMS.txt at release time, and `checkManifest`
+  selects the digest for the running platform, so the manifest alone carries
+  everything an install needs and the release-API fallback is no longer on
+  the critical path.
+
 ## [v1.1.0] - 2026-11-08
 
 ### Added
