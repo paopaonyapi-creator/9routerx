@@ -140,12 +140,13 @@ jobs:
           # Menu button is the only way to reach the nav: a page missing it has
           # no navigation at all below the breakpoint, and every page would
           # still render — which is why nothing else catches this.
-          # Only wiki pages carry the disclosure; tg.html is a redirect stub and
-          # index.html is the README page, whose chrome is the masthead, not the
-          # wiki sheet.
+          # Only wiki pages carry the disclosure. tg.html is a redirect stub,
+          # index.html is the landing (its chrome is the masthead's own nav with
+          # the mobile sheet, not the wiki sidebar), and readme.html is the
+          # standalone README page with that same masthead nav.
           nav_missing=0
           for page in _site/*.html; do
-            case "$(basename "$page")" in tg.html|index.html) continue ;; esac
+            case "$(basename "$page")" in tg.html|index.html|readme.html) continue ;; esac
             grep -q 'id="nav-open"' "$page" || { echo "::error::$page has no Menu button; phone readers cannot navigate"; nav_missing=1; }
             grep -q 'aria-controls="wiki-side"' "$page" || { echo "::error::$page Menu button does not name the sheet it opens"; nav_missing=1; }
             grep -q 'id="wiki-side"' "$page" || { echo "::error::$page has no sidebar id"; nav_missing=1; }
