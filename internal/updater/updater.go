@@ -9,6 +9,9 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"debug/elf"
+	"debug/macho"
+	"debug/pe"
 	"encoding/hex"
 	json "encoding/json/v2"
 	"fmt"
@@ -678,83 +681,266 @@ func PerformSelfUpdate(downloadURL, expectedSHA256 string) error {
 	return nil
 }
 
+const (
+	// A 9RouterX binary is under 100 MB, so these caps leave ample room for a
+	// compressed binary plus its docs while bounding what a hostile or
+	// accidental archive can make the updater inflate before the digest is
+	// checked: expansion beyond them is an error, never a truncated read.
+	maxArchiveEntries    = 64
+	maxArchiveEntryBytes = 256 << 20
+	maxArchiveTotalBytes = 512 << 20
+)
+
+// archiveBudget accounts every member an archive declares, including
+// directories and non-regular entries, because a reader still has to consume
+// their data even when nothing is kept.
+type archiveBudget struct {
+	entries int
+	total   int64
+}
+
+func (b *archiveBudget) account(name string, declared int64) error {
+	b.entries++
+	if b.entries > maxArchiveEntries {
+		return fmt.Errorf("archive has more than %d entries", maxArchiveEntries)
+	}
+	if declared < 0 || declared > maxArchiveEntryBytes {
+		return fmt.Errorf("archive entry %q declares %d bytes, over the %d-byte limit", name, declared, maxArchiveEntryBytes)
+	}
+	b.total += declared
+	if b.total > maxArchiveTotalBytes {
+		return fmt.Errorf("archive expands beyond %d bytes", maxArchiveTotalBytes)
+	}
+	return nil
+}
+
+// readArchiveEntry reads one member bounded by the size its header declared.
+// One byte past the declaration is enough to detect a header that lies.
+func readArchiveEntry(r io.Reader, name string, declared int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, declared+1))
+	if err != nil {
+		return nil, fmt.Errorf("read archive entry %q: %w", name, err)
+	}
+	if int64(len(data)) > declared {
+		return nil, fmt.Errorf("archive entry %q expands past its declared %d bytes", name, declared)
+	}
+	return data, nil
+}
+
 // extractExecutableBytes handles .tar.gz, .zip, and raw binaries.
 // Uses a scoring heuristic to prefer the actual executable binary over
 // README, LICENSE, checksum, or other non-executable files in the archive.
+// A recognised archive that cannot be parsed, or that yields no executable for
+// this platform, is an error: falling back to the raw bytes would install an
+// archive over the binary.
 func extractExecutableBytes(data []byte, filenameOrURL string) ([]byte, error) {
 	lower := strings.ToLower(filenameOrURL)
 
 	// 1. Handle .tar.gz or .tgz (or gzip magic bytes)
 	if strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz") || isGzip(data) {
 		gzReader, err := gzip.NewReader(bytes.NewReader(data))
-		if err == nil {
-			defer gzReader.Close()
-			tarReader := tar.NewReader(gzReader)
-			var best []byte
-			bestScore := 0
-			for {
-				header, err := tarReader.Next()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					return nil, fmt.Errorf("read tar entry: %w", err)
-				}
-				if header.Typeflag != tar.TypeReg {
-					continue
-				}
-				extracted, err := io.ReadAll(tarReader)
-				if err != nil {
-					continue
-				}
-				score := scoreArchiveEntry(header.Name, extracted)
-				if score > bestScore {
-					bestScore = score
-					best = extracted
-				}
+		if err != nil {
+			return nil, fmt.Errorf("open gzip archive: %w", err)
+		}
+		defer gzReader.Close()
+		tarReader := tar.NewReader(gzReader)
+		budget := &archiveBudget{}
+		var best []byte
+		bestScore := 0
+		for {
+			header, err := tarReader.Next()
+			if err == io.EOF {
+				break
 			}
-			if bestScore >= 3 && len(best) > 1024 {
-				return best, nil
+			if err != nil {
+				return nil, fmt.Errorf("read tar entry: %w", err)
+			}
+			if err := budget.account(header.Name, header.Size); err != nil {
+				return nil, err
+			}
+			if header.Typeflag != tar.TypeReg {
+				continue
+			}
+			extracted, err := readArchiveEntry(tarReader, header.Name, header.Size)
+			if err != nil {
+				return nil, err
+			}
+			if score := scoreArchiveEntry(header.Name, extracted); score > bestScore {
+				bestScore = score
+				best = extracted
 			}
 		}
+		return pickExecutable(best, bestScore)
 	}
 
 	// 2. Handle .zip (or ZIP magic bytes)
 	if strings.HasSuffix(lower, ".zip") || isZip(data) {
 		zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-		if err == nil {
-			var best []byte
-			bestScore := 0
-			for _, file := range zipReader.File {
-				if file.FileInfo().IsDir() {
-					continue
-				}
-				rc, err := file.Open()
-				if err != nil {
-					continue
-				}
-				extracted, err := io.ReadAll(rc)
-				rc.Close()
-				if err != nil {
-					continue
-				}
-				score := scoreArchiveEntry(file.Name, extracted)
-				if score > bestScore {
-					bestScore = score
-					best = extracted
-				}
+		if err != nil {
+			return nil, fmt.Errorf("open zip archive: %w", err)
+		}
+		budget := &archiveBudget{}
+		var best []byte
+		bestScore := 0
+		for _, file := range zipReader.File {
+			if file.UncompressedSize64 > uint64(maxArchiveEntryBytes) {
+				return nil, fmt.Errorf("archive entry %q declares %d bytes, over the %d-byte limit", file.Name, file.UncompressedSize64, maxArchiveEntryBytes)
 			}
-			if bestScore >= 3 && len(best) > 1024 {
-				return best, nil
+			if err := budget.account(file.Name, int64(file.UncompressedSize64)); err != nil {
+				return nil, err
+			}
+			if file.FileInfo().IsDir() {
+				continue
+			}
+			if file.Mode()&os.ModeSymlink != 0 {
+				return nil, fmt.Errorf("archive entry %q is a symlink", file.Name)
+			}
+			rc, err := file.Open()
+			if err != nil {
+				return nil, fmt.Errorf("open zip entry %q: %w", file.Name, err)
+			}
+			extracted, err := readArchiveEntry(rc, file.Name, int64(file.UncompressedSize64))
+			rc.Close()
+			if err != nil {
+				return nil, err
+			}
+			if score := scoreArchiveEntry(file.Name, extracted); score > bestScore {
+				bestScore = score
+				best = extracted
 			}
 		}
+		return pickExecutable(best, bestScore)
 	}
 
-	// 3. Raw executable binary — apply magic byte check
-	if isELF(data) || isMachO(data) || isPE(data) {
-		return data, nil
+	// 3. Raw executable binary
+	if err := executableMatchesTarget(data); err != nil {
+		return nil, err
 	}
 	return data, nil
+}
+
+// pickExecutable returns the best-scoring archive member once it is confirmed
+// to be an executable for the running platform.
+func pickExecutable(best []byte, bestScore int) ([]byte, error) {
+	if bestScore < 3 || len(best) <= 1024 {
+		return nil, fmt.Errorf("archive contains no executable for %s_%s", runtime.GOOS, runtime.GOARCH)
+	}
+	if err := executableMatchesTarget(best); err != nil {
+		return nil, err
+	}
+	return best, nil
+}
+
+// executableMatchesTarget parses the candidate header instead of trusting its
+// file name: only the parsed format and machine tell whether these bytes would
+// run on this platform. A format this build does not know how to check falls
+// back to the magic-byte gate.
+func executableMatchesTarget(data []byte) error {
+	switch runtime.GOOS {
+	case "linux":
+		return elfMatchesTarget(data)
+	case "darwin":
+		return machoMatchesTarget(data)
+	case "windows":
+		return peMatchesTarget(data)
+	}
+	if !isELF(data) && !isMachO(data) && !isPE(data) {
+		return fmt.Errorf("downloaded asset is not a recognised executable")
+	}
+	return nil
+}
+
+func elfMatchesTarget(data []byte) error {
+	f, err := elf.NewFile(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("downloaded asset is not a valid ELF executable: %w", err)
+	}
+	defer f.Close()
+	wantClass, wantMachine, ok := elfTarget(runtime.GOARCH)
+	if ok && (f.Class != wantClass || f.Machine != wantMachine) {
+		return fmt.Errorf("downloaded ELF is %v/%v, this build runs %s/%s", f.Class, f.Machine, runtime.GOOS, runtime.GOARCH)
+	}
+	return nil
+}
+
+func elfTarget(goarch string) (elf.Class, elf.Machine, bool) {
+	switch goarch {
+	case "amd64":
+		return elf.ELFCLASS64, elf.EM_X86_64, true
+	case "arm64":
+		return elf.ELFCLASS64, elf.EM_AARCH64, true
+	case "386":
+		return elf.ELFCLASS32, elf.EM_386, true
+	case "arm":
+		return elf.ELFCLASS32, elf.EM_ARM, true
+	case "riscv64":
+		return elf.ELFCLASS64, elf.EM_RISCV, true
+	case "loong64":
+		return elf.ELFCLASS64, elf.EM_LOONGARCH, true
+	case "ppc64", "ppc64le":
+		return elf.ELFCLASS64, elf.EM_PPC64, true
+	case "s390x":
+		return elf.ELFCLASS64, elf.EM_S390, true
+	case "mips", "mipsle":
+		return elf.ELFCLASS32, elf.EM_MIPS, true
+	case "mips64", "mips64le":
+		return elf.ELFCLASS64, elf.EM_MIPS, true
+	}
+	return 0, 0, false
+}
+
+func machoMatchesTarget(data []byte) error {
+	f, err := macho.NewFile(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("downloaded asset is not a valid Mach-O executable: %w", err)
+	}
+	defer f.Close()
+	want, ok := machoCPU(runtime.GOARCH)
+	if ok && f.Cpu != want {
+		return fmt.Errorf("downloaded Mach-O is CPU %v, this build runs %s/%s", f.Cpu, runtime.GOOS, runtime.GOARCH)
+	}
+	return nil
+}
+
+func machoCPU(goarch string) (macho.Cpu, bool) {
+	switch goarch {
+	case "amd64":
+		return macho.CpuAmd64, true
+	case "arm64":
+		return macho.CpuArm64, true
+	case "386":
+		return macho.Cpu386, true
+	case "arm":
+		return macho.CpuArm, true
+	}
+	return 0, false
+}
+
+func peMatchesTarget(data []byte) error {
+	f, err := pe.NewFile(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("downloaded asset is not a valid PE executable: %w", err)
+	}
+	defer f.Close()
+	want, ok := peMachine(runtime.GOARCH)
+	if ok && f.Machine != want {
+		return fmt.Errorf("downloaded PE is machine %#x, this build runs %s/%s", f.Machine, runtime.GOOS, runtime.GOARCH)
+	}
+	return nil
+}
+
+func peMachine(goarch string) (uint16, bool) {
+	switch goarch {
+	case "amd64":
+		return pe.IMAGE_FILE_MACHINE_AMD64, true
+	case "arm64":
+		return pe.IMAGE_FILE_MACHINE_ARM64, true
+	case "386":
+		return pe.IMAGE_FILE_MACHINE_I386, true
+	case "arm":
+		return pe.IMAGE_FILE_MACHINE_ARMNT, true
+	}
+	return 0, false
 }
 
 // scoreArchiveEntry returns a confidence score for an archive entry being the

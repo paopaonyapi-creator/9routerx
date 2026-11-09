@@ -199,7 +199,7 @@ func TestCheckUpdate_GitHubReleasesFallback(t *testing.T) {
 
 func TestExtractExecutableBytes_TarGz(t *testing.T) {
 	// Create a dummy .tar.gz containing a 9routerx binary payload
-	binaryContent := bytes.Repeat([]byte("BINARY_PAYLOAD_CONTENT_TEST_EXEC_DATA"), 100)
+	binaryContent := targetExecutablePayload(t, 2048)
 
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
@@ -230,7 +230,7 @@ func TestExtractExecutableBytes_TarGz(t *testing.T) {
 }
 
 func TestExtractExecutableBytes_Zip(t *testing.T) {
-	binaryContent := bytes.Repeat([]byte("ZIP_BINARY_PAYLOAD_TEST_DATA"), 100)
+	binaryContent := targetExecutablePayload(t, 2048)
 
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -513,7 +513,7 @@ func stubRunningBinary(t *testing.T, payload []byte) string {
 func TestPerformSelfUpdate_RefusesInstallWithoutChecksum(t *testing.T) {
 	stub := stubRunningBinary(t, []byte("ORIGINAL_RUNNING_BINARY"))
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write(updateAssetTarGz(t, bytes.Repeat([]byte("NEW_BINARY_PAYLOAD"), 200)))
+		w.Write(updateAssetTarGz(t, targetExecutablePayload(t, 2048)))
 	}))
 	defer server.Close()
 
@@ -533,7 +533,7 @@ func TestPerformSelfUpdate_RefusesInstallWithoutChecksum(t *testing.T) {
 func TestPerformSelfUpdate_KeepsBinaryOnChecksumMismatch(t *testing.T) {
 	stub := stubRunningBinary(t, []byte("ORIGINAL_RUNNING_BINARY"))
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Write(updateAssetTarGz(t, bytes.Repeat([]byte("NEW_BINARY_PAYLOAD"), 200)))
+		w.Write(updateAssetTarGz(t, targetExecutablePayload(t, 2048)))
 	}))
 	defer server.Close()
 
@@ -573,7 +573,7 @@ func TestRunCheckCycle_SkipsPrereleaseForFinalInstall(t *testing.T) {
 		restoreEnv("AUTO_UPDATE", previousAuto, hadAuto)
 	})
 
-	payload := bytes.Repeat([]byte("NEW_BINARY_PAYLOAD"), 200)
+	payload := targetExecutablePayload(t, 2048)
 	digest := ComputeSHA256(payload)
 	assetName := platformBinaryAsset()
 	var release, base string
@@ -667,7 +667,7 @@ func TestRunCheckCycle_SkipsPrereleaseForFinalInstall(t *testing.T) {
 // being a lead rather than an answer when it describes an update it cannot
 // verify.
 func TestCheckUpdate_ManifestWithoutDigestFallsThroughToReleaseDigest(t *testing.T) {
-	payload := bytes.Repeat([]byte("NEW_BINARY_PAYLOAD"), 200)
+	payload := targetExecutablePayload(t, 2048)
 	digest := ComputeSHA256(payload)
 	assetName := platformBinaryAsset()
 
