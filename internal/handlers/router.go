@@ -56,7 +56,6 @@ func SetupRoutes(r interface {
 }, repo *db.Repo, ts *TokenSaverConfig) *chat.ChatHandler {
 	chatH := chat.NewChatHandler(repo, ts)
 	mediaH := media.NewMediaHandler(repo, ts, chatH)
-	oauthH := oauth.NewOAuthHandler(repo)
 
 	dashH := dashboard.NewDashboardHandler(repo, ts)
 	if chatH != nil {
@@ -131,31 +130,6 @@ func SetupRoutes(r interface {
 	// under RequireDashboardAuth instead — it is a dashboard read. Registering it
 	// here too would win the match under RequireApiKey and keep it unreachable
 	// from the session cookie the SPA actually sends.
-	r.Get("/cli-tools/all-statuses", media.NewCLIToolsHandler().HandleAllStatuses)
-
-	// Headroom Management Domain (token-compression proxy lifecycle + dashboard proxy)
-	headroomH := media.NewHeadroomHandler(repo)
-	r.Post("/headroom/start", headroomH.HandleHeadroomStart)
-	r.Post("/headroom/stop", headroomH.HandleHeadroomStop)
-	r.Post("/headroom/restart", headroomH.HandleHeadroomRestart)
-	r.Get("/headroom/status", headroomH.HandleHeadroomStatus)
-	r.Get("/headroom/extras", headroomH.HandleHeadroomExtras)
-	r.Post("/headroom/extras", headroomH.HandleHeadroomExtras)
-	r.Delete("/headroom/extras", headroomH.HandleHeadroomExtras)
-	r.HandleFunc("/headroom/proxy", headroomH.HandleHeadroomProxy)
-	r.HandleFunc("/headroom/proxy/*", headroomH.HandleHeadroomProxy)
-
-	r.Post("/api/headroom/start", headroomH.HandleHeadroomStart)
-	r.Post("/api/headroom/stop", headroomH.HandleHeadroomStop)
-	r.Post("/api/headroom/restart", headroomH.HandleHeadroomRestart)
-	r.Get("/api/headroom/status", headroomH.HandleHeadroomStatus)
-	r.Get("/api/headroom/extras", headroomH.HandleHeadroomExtras)
-	r.Post("/api/headroom/extras", headroomH.HandleHeadroomExtras)
-	r.Delete("/api/headroom/extras", headroomH.HandleHeadroomExtras)
-	r.HandleFunc("/api/headroom/proxy", headroomH.HandleHeadroomProxy)
-	r.HandleFunc("/api/headroom/proxy/*", headroomH.HandleHeadroomProxy)
-	// OAuth & Import Tokens Domain
-	mountOAuthRoutes(r, oauthH)
 
 	// Usage Real-time SSE Stream & Stats Domain (dashboard topology animation + recent requests)
 	r.Get("/usage/stream", HandleUsageStream(repo))
@@ -444,6 +418,16 @@ func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) 
 
 	// Headroom token-compression proxy management (dashboard parity)
 	headroomH := media.NewHeadroomHandler(repo)
+	r.Get("/cli-tools/all-statuses", media.NewCLIToolsHandler().HandleAllStatuses)
+	r.Get("/headroom/status", headroomH.HandleHeadroomStatus)
+	r.Post("/headroom/start", headroomH.HandleHeadroomStart)
+	r.Post("/headroom/stop", headroomH.HandleHeadroomStop)
+	r.Post("/headroom/restart", headroomH.HandleHeadroomRestart)
+	r.Get("/headroom/extras", headroomH.HandleHeadroomExtras)
+	r.Post("/headroom/extras", headroomH.HandleHeadroomExtras)
+	r.Delete("/headroom/extras", headroomH.HandleHeadroomExtras)
+	r.HandleFunc("/headroom/proxy", headroomH.HandleHeadroomProxy)
+	r.HandleFunc("/headroom/proxy/*", headroomH.HandleHeadroomProxy)
 	r.Get("/api/headroom/status", headroomH.HandleHeadroomStatus)
 	r.Post("/api/headroom/start", headroomH.HandleHeadroomStart)
 	r.Post("/api/headroom/stop", headroomH.HandleHeadroomStop)
@@ -736,7 +720,7 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) *chat.
 	// Admin-only operations (health reset, shutdown, update) - strictly requires session cookie or CLI token.
 	// Standard client API keys are rejected, matching upstream ALWAYS_PROTECTED.
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.RequireAdminAuth())
+		r.Use(middleware.RequireAdminAuth(repo))
 
 		// Health reset endpoint — dashboard calls this via headroom proxy
 		r.Post("/admin/health/reset", func(w http.ResponseWriter, r *http.Request) {

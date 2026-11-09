@@ -66,7 +66,7 @@ func TestSetupRoutes_OAuthEndpointsMounted(t *testing.T) {
 
 	repo := db.NewRepo(database)
 	r := chi.NewRouter()
-	SetupRoutes(r, repo, nil)
+	SetupServerRouter(r, repo, nil)
 
 	endpoints := []struct {
 		method string
@@ -342,7 +342,7 @@ func TestConsoleLogsRoutesUseDashboardSessionGate(t *testing.T) {
 	}
 	rec = httptest.NewRecorder()
 	r.ServeHTTP(rec, keyReq)
-	if rec.Code != http.StatusUnauthorized {
+	if rec.Code != http.StatusForbidden {
 		t.Fatalf("engine key console request status = %d", rec.Code)
 	}
 
@@ -587,10 +587,10 @@ func TestSetupServerRouter_TeamsRoutesAreLive(t *testing.T) {
 	keyedReq.Header.Set("Authorization", "Bearer client-key")
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, keyedReq)
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("client api key status = %d, want 401", rec.Code)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("client api key status = %d, want 403", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "dashboard session required") {
-		t.Errorf("client api key error = %q, want the session-required refusal", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "Operator credentials required") {
+		t.Errorf("client api key error = %q, want operator-required refusal", rec.Body.String())
 	}
 }

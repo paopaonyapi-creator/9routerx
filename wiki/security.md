@@ -15,7 +15,8 @@ through it. This page covers every control that protects them.
 |---|---|
 | Public | `/health`, dashboard HTML/assets, `/login`, OAuth callbacks |
 | Proxy routes (`/v1/*`, `/api/chat`) | Active client API key (`Authorization: Bearer` / `X-API-Key`) |
-| Dashboard APIs (`/api/*`) | Session cookie, CLI token, or API key |
+| Dashboard management APIs | Operator session cookie or CLI token; engine keys are forbidden |
+| Read-only metadata (`/api/providers/catalog`, `/api/models/caps`) | An active, unexpired engine API key is also accepted |
 | Destructive operations (shutdown, update, DB import, vault rotation) | Session or CLI token — never a client API key |
 | Console log APIs | Full dashboard session or local CLI token; client API keys are rejected |
 

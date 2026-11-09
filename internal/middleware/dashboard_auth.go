@@ -8,17 +8,11 @@ import (
 	"9routerx/proxy/internal/auth"
 	"9routerx/proxy/internal/db"
 	"9routerx/proxy/internal/handlerutil"
+	"9routerx/proxy/internal/keikey"
 )
 
-// RequireDashboardAuth gates the dashboard REST API behind the login session
-// when requireLogin is on. It mirrors upstream dashboardGuard: a request is let
-// through when requireLogin is disabled, when it carries a valid auth_token
-// cookie, when it presents the local CLI token header, or when it authenticates
-// with a valid API key (so CLI tools and the built-in dashboard key keep
-// working). Anything else gets a flat { error: "Unauthorized" } 401.
-// IsAlwaysProtectedPath reports whether the path requires full admin session or CLI token,
-// mirroring upstream ALWAYS_PROTECTED in src/dashboardGuard.js.
-// Standard client API keys and requireLogin=false are forbidden here.
+// RequireDashboardAuth keeps operator management separate from engine keys.
+// Engine credentials are admitted only to explicit read-only metadata routes.
 
 // PasswordHeaderCarriesOwnAuth names the one always-protected path whose handler
 // re-verifies the dashboard password header itself.
@@ -101,12 +95,53 @@ var storageMaintenancePaths = map[string]bool{
 // or which keys are near their budget. An install with login disabled keeps
 // working, because there is no session to present and the whole dashboard is
 // already open in that mode.
+func engineDashboardReadAllowed(method, path string) bool {
+	if method != http.MethodGet {
+		return false
+	}
+	switch path {
+	case "/api/providers/catalog", "/api/models/caps":
+		return true
+	default:
+		return false
+	}
+}
+
+// Classify against the current row, not a cached engine snapshot, without
+// incrementing engine usage. Sentinel and pending credentials are never grants.
+func dashboardEngineCredential(w http.ResponseWriter, r *http.Request, repo *db.Repo, allowRead bool) bool {
+	key := ExtractApiKey(r)
+	if key == "" {
+		return false
+	}
+	lookup := keikey.LookupHash(key)
+	obj, err := resolveUncachedApiKey(repo, lookup, key)
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, "Internal server error")
+		return true
+	}
+	if obj == nil || !verifyApiKey(key, obj) || obj.IsActive != 1 || apiKeyExpired(obj.ExpiresAt, time.Now()) {
+		handlerutil.WriteJSONError(w, http.StatusUnauthorized, "Invalid or inactive API key")
+		return true
+	}
+	if !allowRead {
+		handlerutil.WriteJSONError(w, http.StatusForbidden, "Operator credentials required")
+		return true
+	}
+	return false
+}
+
 func RequireDashboardSessionAuth(repo *db.Repo) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !auth.RequireLogin(repo) ||
-				auth.SessionValid(r) ||
-				auth.ValidCLIToken(r.Header.Get(auth.CLITokenHeader)) {
+			if auth.SessionValid(r) || auth.ValidCLIToken(r.Header.Get(auth.CLITokenHeader)) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if dashboardEngineCredential(w, r, repo, false) {
+				return
+			}
+			if !auth.RequireLogin(repo) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -134,11 +169,10 @@ func RequireConsoleLogAuth(repo *db.Repo) func(http.Handler) http.Handler {
 // An engine client key is the single excluded caller: it is handed to a client
 // app, and F-6 existed so it could not dump the rest of the key set.
 func CallerIsDashboardPrivileged(repo *db.Repo, r *http.Request) bool {
-	if !auth.RequireLogin(repo) {
+	if auth.SessionValid(r) || auth.ValidCLIToken(r.Header.Get(auth.CLITokenHeader)) {
 		return true
 	}
-	return auth.SessionValid(r) ||
-		auth.ValidCLIToken(r.Header.Get(auth.CLITokenHeader))
+	return ExtractApiKey(r) == "" && !auth.RequireLogin(repo)
 }
 
 // RequireAdminAuth ensures that only requests with a valid dashboard session
@@ -154,13 +188,16 @@ func CallerIsDashboardPrivileged(repo *db.Repo, r *http.Request) bool {
 // /api/version/update and /admin/health/reset, whose handlers verify no
 // credential of their own, so accepting the header by presence there turned an
 // arbitrary header into remote shutdown, remote self-update, and a health reset.
-func RequireAdminAuth() func(http.Handler) http.Handler {
+func RequireAdminAuth(repos ...*db.Repo) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if auth.SessionValid(r) ||
 				auth.ValidCLIToken(r.Header.Get(auth.CLITokenHeader)) ||
 				allowsPasswordHeader(r.URL.Path) && r.Header.Get(DashboardPasswordHeader) != "" {
 				next.ServeHTTP(w, r)
+				return
+			}
+			if len(repos) > 0 && dashboardEngineCredential(w, r, repos[0], false) {
 				return
 			}
 			handlerutil.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: admin session or CLI token required")
@@ -171,26 +208,23 @@ func RequireAdminAuth() func(http.Handler) http.Handler {
 func RequireDashboardAuth(repo *db.Repo) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Always-protected routes strictly require valid session cookie or CLI token (upstream parity).
-			// API keys and requireLogin=false are forbidden here. The dashboard
-			// password header is admitted only on the backup download, which
-			// re-verifies it against the stored hash — without that the step-up
-			// credential could never reach the handler over HTTP, so a scripted
-			// backup had no working credential (issue #47). The other
-			// always-protected paths verify no credential themselves, so a header
-			// present on them must not count as anything (see allowsPasswordHeader).
+			if auth.SessionValid(r) || auth.ValidCLIToken(r.Header.Get(auth.CLITokenHeader)) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			keyPresented := ExtractApiKey(r) != ""
+			if dashboardEngineCredential(w, r, repo, !IsAlwaysProtectedPath(r.URL.Path) && engineDashboardReadAllowed(r.Method, r.URL.Path)) {
+				return
+			}
+			if keyPresented {
+				next.ServeHTTP(w, r)
+				return
+			}
 			if IsAlwaysProtectedPath(r.URL.Path) {
-				if auth.SessionValid(r) ||
-					auth.ValidCLIToken(r.Header.Get(auth.CLITokenHeader)) ||
-					allowsPasswordHeader(r.URL.Path) && r.Header.Get(DashboardPasswordHeader) != "" {
+				if allowsPasswordHeader(r.URL.Path) && r.Header.Get(DashboardPasswordHeader) != "" {
 					next.ServeHTTP(w, r)
 					return
 				}
-				// The three storage-maintenance actions are the one exception:
-				// with login off the dashboard operator has no session to
-				// present, and refusing them there leaves the profile page
-				// with buttons that can only ever answer 401. An install that
-				// requires a login keeps the full gate above.
 				if storageMaintenancePaths[r.URL.Path] && !auth.RequireLogin(repo) {
 					next.ServeHTTP(w, r)
 					return
@@ -198,26 +232,9 @@ func RequireDashboardAuth(repo *db.Repo) func(http.Handler) http.Handler {
 				handlerutil.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: admin session or CLI token required")
 				return
 			}
-
-			if !auth.RequireLogin(repo) || auth.SessionValid(r) {
+			if !auth.RequireLogin(repo) {
 				next.ServeHTTP(w, r)
 				return
-			}
-			if auth.ValidCLIToken(r.Header.Get(auth.CLITokenHeader)) {
-				next.ServeHTTP(w, r)
-				return
-			}
-			if key := ExtractApiKey(r); key != "" {
-				// The same contract the engine path enforces (RequireApiKey):
-				// active AND not expired. An expired key is refused with 401 on
-				// /v1/*, so letting the same credential manage keys, connections
-				// and usage through the dashboard would make expiry a control
-				// that stops nothing but the chat lane.
-				if obj, err := repo.GetApiKeyByKey(key); err == nil && obj != nil &&
-					obj.IsActive == 1 && !apiKeyExpired(obj.ExpiresAt, time.Now()) {
-					next.ServeHTTP(w, r)
-					return
-				}
 			}
 			handlerutil.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: dashboard session required")
 		})

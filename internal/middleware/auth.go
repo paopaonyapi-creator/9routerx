@@ -156,6 +156,10 @@ func resolveApiKey(repo *db.Repo, lookup, plaintext string) (*models.APIKey, err
 	if cached, ok := keikey.DefaultAuthCache().Get(lookup); ok {
 		return cached.(*models.APIKey), nil
 	}
+	return resolveUncachedApiKey(repo, lookup, plaintext)
+}
+
+func resolveUncachedApiKey(repo *db.Repo, lookup, plaintext string) (*models.APIKey, error) {
 	apiKey, err := repo.GetApiKeyByKey(plaintext)
 	if err != nil || apiKey == nil {
 		if err != nil {
@@ -170,8 +174,11 @@ func resolveApiKey(repo *db.Repo, lookup, plaintext string) (*models.APIKey, err
 // #199 carries an argon2id verifier and is confirmed with it; every other row
 // was matched on the plaintext column itself, so there is nothing left to check.
 func verifyApiKey(plaintext string, apiKey *models.APIKey) bool {
+	if apiKey == nil || strings.HasPrefix(plaintext, "\x00argon2id:") || strings.HasPrefix(plaintext, "sxb1-masked:") {
+		return false
+	}
 	if apiKey.KeyHash == nil || *apiKey.KeyHash == "" {
-		return true
+		return !db.IsHashedKeyRow(apiKey) && apiKey.Key == plaintext
 	}
 	return keikey.Verify(plaintext, *apiKey.KeyHash)
 }

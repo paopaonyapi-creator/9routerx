@@ -35,11 +35,16 @@ func TestRequireDashboardAuth(t *testing.T) {
 		t.Errorf("expected 401 without credentials, got %d", rec.Code)
 	}
 
-	// Seeded valid API key bypasses the gate (CLI / built-in dashboard key).
+	// Engine keys cannot read management inventory.
 	apiKeyReq := httptest.NewRequest(http.MethodGet, "/api/connections", nil)
 	apiKeyReq.Header.Set("Authorization", "Bearer valid-token")
-	if rec := serve(apiKeyReq); rec.Code != http.StatusOK {
-		t.Errorf("expected valid API key to pass, got %d", rec.Code)
+	if rec := serve(apiKeyReq); rec.Code != http.StatusForbidden {
+		t.Errorf("expected engine key management access to be forbidden, got %d", rec.Code)
+	}
+	metadataReq := httptest.NewRequest(http.MethodGet, "/api/providers/catalog", nil)
+	metadataReq.Header.Set("Authorization", "Bearer valid-token")
+	if rec := serve(metadataReq); rec.Code != http.StatusOK {
+		t.Errorf("expected engine key metadata read, got %d", rec.Code)
 	}
 
 	// The derived CLI token bypasses the gate; an arbitrary value must not.
@@ -86,8 +91,8 @@ func TestRequireDashboardAuth(t *testing.T) {
 	// Always-protected routes reject client API key even if key is valid.
 	apiDbReq := httptest.NewRequest(http.MethodGet, "/api/settings/database", nil)
 	apiDbReq.Header.Set("Authorization", "Bearer valid-token")
-	if rec := serve(apiDbReq); rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401 when API key accesses always-protected route, got %d", rec.Code)
+	if rec := serve(apiDbReq); rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 when API key accesses always-protected route, got %d", rec.Code)
 	}
 
 	// Always-protected routes reject unauthenticated even when requireLogin=false.
@@ -164,8 +169,8 @@ func TestStorageMaintenanceAdmittedWhenLoginDisabled(t *testing.T) {
 	// A client API key is not an operator credential on those routes either.
 	keyReq := httptest.NewRequest(http.MethodPost, "/api/settings/database/prune-usage", nil)
 	keyReq.Header.Set("Authorization", "Bearer valid-token")
-	if code := serve(keyReq); code != http.StatusUnauthorized {
-		t.Errorf("client API key on prune-usage = %d, want 401", code)
+	if code := serve(keyReq); code != http.StatusForbidden {
+		t.Errorf("client API key on prune-usage = %d, want 403", code)
 	}
 }
 
@@ -211,7 +216,7 @@ func TestRequireConsoleLogAuth(t *testing.T) {
 	keyReq.Header.Set("Authorization", "Bearer valid-token")
 	rec = httptest.NewRecorder()
 	gate.ServeHTTP(rec, keyReq)
-	if rec.Code != http.StatusUnauthorized {
+	if rec.Code != http.StatusForbidden {
 		t.Fatalf("client API key console status = %d", rec.Code)
 	}
 
@@ -435,7 +440,7 @@ func TestDashboardApiKeyFallbackEnforcesExpiry(t *testing.T) {
 
 	gate := RequireDashboardAuth(repo)(okHandler())
 	serve := func(bearer string) int {
-		req := httptest.NewRequest(http.MethodGet, "/api/connections", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/providers/catalog", nil)
 		req.Header.Set("Authorization", "Bearer "+bearer)
 		rec := httptest.NewRecorder()
 		gate.ServeHTTP(rec, req)
@@ -517,8 +522,8 @@ func TestRequireDashboardSessionAuth(t *testing.T) {
 	// a client app, and the security log names the install's failed attempts.
 	keyedReq := httptest.NewRequest(http.MethodGet, "/api/security-log", nil)
 	keyedReq.Header.Set("Authorization", "Bearer valid-token")
-	if rec := serve(keyedReq); rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401 for a client api key, got %d", rec.Code)
+	if rec := serve(keyedReq); rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for a client api key, got %d", rec.Code)
 	}
 
 	// The derived CLI token passes; an arbitrary header value does not.

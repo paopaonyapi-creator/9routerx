@@ -16,7 +16,8 @@ route table.
 |---|---|
 | Public | `/health`, `/version`, `/api/hello`, `/changelog`, OAuth callbacks, dashboard assets |
 | Client API key (`Authorization: Bearer` / `X-API-Key`) | every `/v1/*` proxy route |
-| Dashboard session / CLI token / API key | every `/api/*` dashboard route |
+| Dashboard session / CLI token | Dashboard management routes; valid engine keys get 403 |
+| Engine key, read-only dashboard allowlist | GET `/api/providers/catalog`, GET `/api/models/caps` |
 | Console-log session / CLI token | `/api/translator/console-logs*` (client API keys are rejected) |
 | Admin session / CLI token | update, auto-update toggle, shutdown, `/debug/pprof/*` |
 

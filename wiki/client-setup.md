@@ -50,8 +50,9 @@ curl http://localhost:20128/v1/chat/completions \
 
 - **Public**: `/health`, dashboard HTML/assets, `/login`, OAuth callbacks.
 - **Proxy routes** require an active client API key (`Authorization: Bearer` / `X-API-Key`).
-- **Dashboard APIs** require a session cookie, CLI token, or API key; destructive
-  operations (shutdown, update, DB import) require a session or CLI token.
+- **Dashboard management APIs** require an operator session cookie or CLI token.
+  Engine keys only grant the explicitly allowlisted catalog/capability GETs.
+  Login disabled remains an open anonymous dashboard, not tenant isolation.
 - The API server defaults to loopback (`127.0.0.1`). Access from other machines
   requires explicit `HOST=0.0.0.0` or `HOST=*`; protect that port with strong
   dashboard authentication and trusted network controls.

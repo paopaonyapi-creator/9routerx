@@ -138,7 +138,7 @@ Dashboard login issues a 24-hour HS256 JWT in the httpOnly `auth_token` cookie. 
 
 A stored bcrypt dashboard password wins. If none is stored, `INITIAL_PASSWORD` is accepted; for compatibility, the Go implementation still accepts the well-known `123456` when `INITIAL_PASSWORD` is unset. A remote request using that compatibility default is refused a session until the password is changed or `INITIAL_PASSWORD` is configured. Local requests may use it temporarily.
 
-`RequireDashboardAuth` allows access when login is disabled, a valid session is present, the local `x-9r-cli-token` is valid, or an active client API key is present. This is intentional upstream-compatible machine access.
+`RequireDashboardAuth` separates operator credentials from engine API keys. Sessions and valid CLI tokens grant management; engine keys only grant the exact read-only catalog/capability allowlist and otherwise receive 403. Missing or invalid credentials receive 401 when login is required. With login disabled, anonymous access remains open; omitting an engine header does not provide an operator-isolation boundary.
 
 The CLI token is deterministically derived from the persisted machine ID, CLI secret, and a fixed compatibility salt; only the derived value is compared.
 
