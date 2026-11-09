@@ -102,6 +102,52 @@ func TestPruneUsageHistory_SpendInvariant(t *testing.T) {
 	}
 }
 
+// TestPruneUsageHistory_CarriesSpendForHashOnlyKey covers the row shape this
+// build issues: the `key` column holds the hashed-row sentinel, so the prune
+// must match deleted spend through the stored mask. Before that, a prune of a
+// hash-only key carried nothing and silently refunded its whole budget.
+func TestPruneUsageHistory_CarriesSpendForHashOnlyKey(t *testing.T) {
+	repo := retentionTestRepo(t)
+	ctx := context.Background()
+
+	const secret = "sk-hash-only-client-secret-998877"
+	masked := handlerutil.MaskAPIKey(secret)
+	if err := repo.CreateHashedApiKey("key-h", "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$a2V5", "lookup-h", masked, "Hashed", "mach-h"); err != nil {
+		t.Fatalf("CreateHashedApiKey: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	// 350 + 125 tokens fall inside the retention window and are carried; 50
+	// survive the prune.
+	seedLedgerRow(t, repo, 1, masked, "upstream-cred", 300, 50, now.Add(-100*24*time.Hour))
+	seedLedgerRow(t, repo, 2, masked, "upstream-cred", 100, 25, now.Add(-40*24*time.Hour))
+	seedLedgerRow(t, repo, 3, masked, "upstream-cred", 40, 10, now.Add(-2*24*time.Hour))
+
+	before, err := repo.GetApiKeyTokenUsageByID(ctx, "key-h")
+	if err != nil {
+		t.Fatalf("usage before prune: %v", err)
+	}
+	if before != 525 {
+		t.Fatalf("usage before prune = %d, want 525", before)
+	}
+
+	res, err := repo.PruneUsageHistory(ctx, 30*24*time.Hour)
+	if err != nil {
+		t.Fatalf("PruneUsageHistory: %v", err)
+	}
+	if res.CarriedTokens != 475 {
+		t.Errorf("carried tokens = %d, want 475", res.CarriedTokens)
+	}
+
+	after, err := repo.GetApiKeyTokenUsageByID(ctx, "key-h")
+	if err != nil {
+		t.Fatalf("usage after prune: %v", err)
+	}
+	if after != before {
+		t.Fatalf("INVARIANT VIOLATED: usage after prune = %d, want %d", after, before)
+	}
+}
+
 // TestPruneUsageHistory_ResetExcludesPreResetSpend proves a key that was reset
 // before the prune does NOT carry over spend that predates its reset mark.
 func TestPruneUsageHistory_ResetExcludesPreResetSpend(t *testing.T) {

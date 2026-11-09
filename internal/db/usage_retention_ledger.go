@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"slices"
+	"strings"
 	"time"
 
 	"9routerx/proxy/internal/handlerutil"
@@ -179,7 +180,7 @@ func ledgerCutoff(retention time.Duration) string {
 // carryover for exactly the same reason.
 func (r *Repo) ledgerWatchedKeys(ctx context.Context) (*ledgerWatchIndex, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, COALESCE(key, ''), COALESCE(`+quotaResetColumn+`, 0) FROM apiKeys`)
+		`SELECT id, COALESCE(key, ''), COALESCE(keyDisplay, ''), COALESCE(`+quotaResetColumn+`, 0) FROM apiKeys`)
 	if err != nil {
 		return nil, fmt.Errorf("read api keys for carryover: %w", err)
 	}
@@ -187,18 +188,31 @@ func (r *Repo) ledgerWatchedKeys(ctx context.Context) (*ledgerWatchIndex, error)
 
 	index := &ledgerWatchIndex{byMask: map[string][]int{}, byRaw: map[string][]int{}}
 	for rows.Next() {
-		var id, rawKey string
+		var id, rawKey, display string
 		var mark int64
-		if err := rows.Scan(&id, &rawKey, &mark); err != nil {
+		if err := rows.Scan(&id, &rawKey, &display, &mark); err != nil {
 			return nil, fmt.Errorf("scan api key for carryover: %w", err)
 		}
-		if id == "" || rawKey == "" {
-			// A key with no secret can never match a ledger row, and the
-			// limiter short-circuits it before reading any spend, so there is
-			// nothing a carryover for it could hold.
+		if id == "" {
 			continue
 		}
-		index.add(id, rawKey, mark)
+		// A hash-only row's `key` column holds the sentinel that keeps the
+		// UNIQUE constraint satisfied, not a secret. The ledger was written
+		// against the mask recorded at issuance, so that mask — not the
+		// sentinel, and not a mask derived from it — is what a deleted row can
+		// match. Indexing the sentinel instead carried nothing, and the prune
+		// then refunded the key's whole budget.
+		raw, mask := rawKey, ""
+		if strings.HasPrefix(rawKey, hashedKeyPrefix) {
+			raw, mask = "", display
+		}
+		if raw == "" && mask == "" {
+			// A key with no secret and no mask can never match a ledger row,
+			// and the limiter short-circuits it before reading any spend, so
+			// there is nothing a carryover for it could hold.
+			continue
+		}
+		index.add(id, raw, mask, mark)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate api keys for carryover: %w", err)
@@ -265,12 +279,23 @@ func (r *Repo) loadProviderMarks(ctx context.Context, index *ledgerWatchIndex) e
 	return nil
 }
 
-func (w *ledgerWatchIndex) add(id, rawKey string, mark int64) {
+// add indexes one key under the spellings a ledger row can carry. rawKey is
+// empty for a hash-only key — its plaintext is gone, and its sentinel must never
+// be indexed as one — so storedMask is what such a row is found by; for a legacy
+// row the mask is derived from the plaintext, exactly as the reader derives it.
+func (w *ledgerWatchIndex) add(id, rawKey, storedMask string, mark int64) {
 	i := len(w.keys)
 	w.keys = append(w.keys, ledgerWatchedKey{id: id, mark: mark})
-	mask := handlerutil.MaskAPIKey(rawKey)
-	w.byMask[mask] = append(w.byMask[mask], i)
-	w.byRaw[rawKey] = append(w.byRaw[rawKey], i)
+	mask := storedMask
+	if mask == "" {
+		mask = handlerutil.MaskAPIKey(rawKey)
+	}
+	if mask != "" {
+		w.byMask[mask] = append(w.byMask[mask], i)
+	}
+	if rawKey != "" {
+		w.byRaw[rawKey] = append(w.byRaw[rawKey], i)
+	}
 }
 
 // refreshMarks re-reads every watched key's and provider's reset mark through
