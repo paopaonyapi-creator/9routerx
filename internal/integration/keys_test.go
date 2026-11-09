@@ -103,11 +103,10 @@ func TestApiKeyLifecycle(t *testing.T) {
 	})
 }
 
-// TestApiKeysAreMaskedForApiKeyCallers pins the half of issue #199 that must
-// not regress. GET /api/keys now returns full secrets so the dashboard can
-// reveal and copy them, but only for a dashboard credential. An engine client
-// key is handed to a client app, so it must still get the masked value —
-// otherwise one leaked key dumps every other key.
+// TestApiKeysAreMaskedForApiKeyCallers pins the boundary item 1 drew. Listing
+// keys is management, so an engine client key — the credential handed to a
+// client app — is refused outright rather than answered with the masked list:
+// one leaked key must not even enumerate the other keys.
 func TestApiKeysAreMaskedForApiKeyCallers(t *testing.T) {
 	env := newEnv(t)
 
@@ -118,26 +117,25 @@ func TestApiKeysAreMaskedForApiKeyCallers(t *testing.T) {
 		t.Fatalf("seed second key: %v", err)
 	}
 
-	// The seeded key must actually be listed, otherwise the absence of its
-	// secret below would prove nothing.
+	// The seeded key must actually be listed to an operator, otherwise the
+	// refusal below would prove nothing about what an engine key can reach.
 	requireApiKey(t, listApiKeys(t, env), "other-key")
 
 	res := env.Get(t, "/api/keys", WithAPIKey("sk-other-secret-value"))
-	if res.Status != http.StatusOK {
-		t.Fatalf("GET /api/keys as an api-key caller = %d, want 200: %s", res.Status, truncate(res.Body))
+	if res.Status != http.StatusForbidden {
+		t.Fatalf("GET /api/keys as an api-key caller = %d, want 403: %s", res.Status, truncate(res.Body))
 	}
 	if strings.Contains(string(res.Body), "sk-other-secret-value") {
-		t.Errorf("GET /api/keys leaked a full key to an api-key caller: %s", truncate(res.Body))
+		t.Errorf("GET /api/keys leaked a key in a refusal body: %s", truncate(res.Body))
 	}
 
-	// The same route with the local CLI token — an operator credential — does
-	// return the secret. That is what the endpoint table's reveal and copy
-	// buttons read; WithoutAPIKey is required because Env.Do otherwise
-	// authenticates every request as the seeded client key.
-	privileged := env.Get(t, "/api/keys",
-		WithoutAPIKey(),
-		WithHeader(auth.CLITokenHeader, auth.CLIToken()),
-	)
+	// The operator credential still reads the list, and a legacy row that
+	// still holds its plaintext is revealed to it — the transition behavior
+	// item 5 kept.
+	privileged := env.Get(t, "/api/keys", WithHeader(auth.CLITokenHeader, auth.CLIToken()))
+	if privileged.Status != http.StatusOK {
+		t.Fatalf("GET /api/keys with the CLI token = %d, want 200: %s", privileged.Status, truncate(privileged.Body))
+	}
 	if !strings.Contains(string(privileged.Body), "sk-other-secret-value") {
 		t.Errorf("CLI-token caller did not receive the full key: %s", truncate(privileged.Body))
 	}

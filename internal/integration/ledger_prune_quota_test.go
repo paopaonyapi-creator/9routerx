@@ -86,12 +86,16 @@ func TestLedgerPrunePreservesKeyQuotaEnforcement(t *testing.T) {
 		t.Fatalf("usedTokens after prune = %d, want %d", usedAfter, usedBefore)
 	}
 
-	// And the route stays gated: a caller holding only a dashboard session must be
+	// And the route stays gated: a caller with no credential at all must be
 	// refused. It deletes billing rows, so leaving it off the always-protected
 	// list would let an unauthenticated local caller truncate the ledger whenever
 	// requireLogin is off — the mistake this very PR made and fixed.
+	//
+	// WithoutAPIKey is load-bearing now that Env.Do sends the operator token to
+	// the dashboard plane by default: the question here is what happens with no
+	// credential, not what happens with the harness's.
 	beforeRefused := countLedgerRows(t, env)
-	unauthorised := env.Post(t, "/api/settings/database/prune-usage", map[string]any{"days": 30})
+	unauthorised := env.Post(t, "/api/settings/database/prune-usage", map[string]any{"days": 30}, WithoutAPIKey())
 	if unauthorised.Status == http.StatusOK {
 		t.Fatal("prune-usage accepted a caller with no admin credential")
 	}

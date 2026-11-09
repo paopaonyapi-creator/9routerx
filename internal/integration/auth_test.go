@@ -213,9 +213,9 @@ func TestDashboardAuthGate(t *testing.T) {
 			wantCode: http.StatusUnauthorized,
 		},
 		{
-			name:     "client api key is accepted for cli compatibility",
-			opts:     nil,
-			wantCode: http.StatusOK,
+			name:     "client api key is refused on the dashboard",
+			opts:     []RequestOpt{WithAPIKey(env.APIKey)},
+			wantCode: http.StatusForbidden,
 		},
 		{
 			name:     "dashboard session cookie is accepted",
@@ -239,9 +239,9 @@ func TestDashboardAuthGate(t *testing.T) {
 	}
 
 	t.Run("always-protected path refuses a client api key", func(t *testing.T) {
-		res := env.Post(t, "/admin/health/reset?provider=deepseek&model=deepseek-chat", nil)
-		if res.Status != http.StatusUnauthorized {
-			t.Fatalf("POST /admin/health/reset with an api key = %d, want 401 (body: %s)",
+		res := env.Post(t, "/admin/health/reset?provider=deepseek&model=deepseek-chat", nil, WithAPIKey(env.APIKey))
+		if res.Status != http.StatusForbidden {
+			t.Fatalf("POST /admin/health/reset with an api key = %d, want 403 (body: %s)",
 				res.Status, truncate(res.Body))
 		}
 	})

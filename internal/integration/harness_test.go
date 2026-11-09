@@ -15,6 +15,7 @@ import (
 	json "encoding/json/v2"
 
 	"9routerx/proxy/internal/app"
+	"9routerx/proxy/internal/auth"
 	"9routerx/proxy/internal/db"
 	"9routerx/proxy/internal/handlers"
 	"9routerx/proxy/internal/handlers/chat"
@@ -169,9 +170,12 @@ func (r *Result) ErrorMessage(t *testing.T) string {
 type RequestOpt func(*http.Request)
 
 // WithAPIKey authenticates as the given client key. Pass an empty string to
-// send the request unauthenticated.
+// send the request unauthenticated. Choosing a client key also drops the
+// default operator credential, so a test that means "as an engine key" really
+// sends only that.
 func WithAPIKey(key string) RequestOpt {
 	return func(r *http.Request) {
+		r.Header.Del(auth.CLITokenHeader)
 		if key == "" {
 			r.Header.Del("Authorization")
 			return
@@ -180,9 +184,64 @@ func WithAPIKey(key string) RequestOpt {
 	}
 }
 
-// WithoutAPIKey sends the request with no Authorization header at all.
+// WithoutAPIKey sends the request with no credentials at all — neither the
+// engine key nor the operator token the harness otherwise adds.
 func WithoutAPIKey() RequestOpt {
-	return func(r *http.Request) { r.Header.Del("Authorization") }
+	return func(r *http.Request) {
+		r.Header.Del(auth.CLITokenHeader)
+		r.Header.Del("Authorization")
+	}
+}
+
+// gatewayRoute reports whether path is served by the engine group
+// (RequireApiKey). Those routes authenticate with a client key; everything else
+// belongs to the dashboard plane, which item 1 restricts to operator
+// credentials. The list names the engine's OpenAI-compatible lanes rather than
+// enumerating every dashboard route, because that set is finite and stable.
+func gatewayRoute(path string) bool {
+	if path == "/v1" || strings.HasPrefix(path, "/v1/") {
+		return true
+	}
+	switch {
+	case strings.HasPrefix(path, "/api/chat"),
+		strings.HasPrefix(path, "/api/v1/"),
+		strings.HasPrefix(path, "/api/messages"),
+		path == "/api/changelog", path == "/changelog":
+		return true
+	case strings.HasPrefix(path, "/api/models"):
+		return engineModelPath(path)
+	}
+	for _, prefix := range []string{
+		"/files", "/batches", "/chat/", "/messages", "/responses",
+		"/embeddings", "/rerank", "/images/", "/audio/", "/videos/",
+		"/search", "/scrape", "/models",
+	} {
+		if path == strings.TrimSuffix(prefix, "/") || strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// engineModelPath splits the one prefix both planes register routes under.
+// The engine owns the model list, its info route, the catalog sync and the
+// per-kind lookups; the dashboard owns the rest, and chi resolves those static
+// routes before the engine's wildcard.
+func engineModelPath(path string) bool {
+	switch path {
+	case "/api/models", "/api/models/info", "/api/models/catalog-sync":
+		return true
+	}
+	for _, prefix := range []string{
+		"/api/models/alias", "/api/models/auto-disable", "/api/models/caps",
+		"/api/models/custom", "/api/models/deprecations", "/api/models/disabled",
+		"/api/models/health", "/api/models/meta", "/api/models/sync", "/api/models/test",
+	} {
+		if path == prefix || strings.HasPrefix(path, prefix+"/") {
+			return false
+		}
+	}
+	return strings.HasPrefix(path, "/api/models/")
 }
 
 // WithHeader sets an arbitrary request header.
@@ -218,7 +277,14 @@ func (e *Env) Do(t *testing.T, method, path string, body any, opts ...RequestOpt
 	if reader != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	req.Header.Set("Authorization", "Bearer "+e.APIKey)
+	// The credential follows the route: the engine plane takes the client key,
+	// the dashboard plane takes the operator token. An explicit WithAPIKey or
+	// WithoutAPIKey opt overrides this.
+	if gatewayRoute(path) {
+		req.Header.Set("Authorization", "Bearer "+e.APIKey)
+	} else {
+		req.Header.Set(auth.CLITokenHeader, auth.CLIToken())
+	}
 	for _, opt := range opts {
 		opt(req)
 	}
