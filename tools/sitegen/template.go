@@ -711,6 +711,41 @@ Model:    antigravity/gemini-3.7-flash-medium
           </ol>
         </section>
 
+        <!-- Community, honestly: one repo, one channel, one license. No
+             invented stars, quotes or reviews — the cards link to the real
+             places. -->
+        <section id="community" aria-labelledby="community-title">
+          <p class="landing-kicker">Community</p>
+          <h2 id="community-title">Growing in the open.</h2>
+          <p class="landing-lede">One repository, one channel, one license &mdash; everything happens in public.</p>
+          <div class="community-grid">
+            <article class="community-card">
+              <h3>GitHub</h3>
+              <p>
+                Source, issues and releases live in the open at
+                <code>{{ .Repo }}</code>. Star the repo to catch each release.
+              </p>
+              <a class="btn btn-ghost" href="https://github.com/{{ .Repo }}">Star on GitHub</a>
+            </article>
+            <article class="community-card">
+              <h3>Telegram</h3>
+              <p>
+                Release notes, setup tips and support (Bahasa Indonesia) at the AI Club channel
+                and group.
+              </p>
+              <a class="btn btn-ghost" href="tg">Join @aiclub_id</a>
+            </article>
+            <article class="community-card">
+              <h3>Contribute</h3>
+              <p>
+                MIT-licensed: fork it, patch it, ship it. The contributing guide and the wiki
+                document how the pieces fit.
+              </p>
+              <a class="btn btn-ghost" href="contributing.html">Read the guide</a>
+            </article>
+          </div>
+        </section>
+
         <section aria-labelledby="faq-title">
           <p class="landing-kicker">FAQ</p>
           <h2 id="faq-title">Questions the docs answer most</h2>
