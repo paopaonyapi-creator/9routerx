@@ -17,7 +17,7 @@ Cut tool-output token consumption by **20–40%**, automate multi-tier failover 
 [![Telegram Community](https://img.shields.io/badge/Telegram-%40aiclub__id-26A5E4?style=flat-square&logo=telegram)](https://t.me/aiclub_id)
 [![Source port](https://img.shields.io/badge/port-20128-2563EB?style=flat-square)](https://yanstd888.github.io/9routerx/)
 
-[Quick Start](#quick-start) • [Why 9RouterX?](#why-9routerx) • [Key Features](#key-features) • [Supported Clients](#supported-ai-coding-clients) • [Free Providers](#free-ai-providers--keyless-models-catalog) • [Database Sharing](#sharing-a-database-with-9router) • [Screenshots](#screenshots) • [Setup Guide](#setup-guide-summary--wiki-documentation) • [Comparison](#architecture-comparison) • [FAQ](#frequently-asked-questions-faq) • [Docs](#docs) • [Wiki](https://yanstd888.github.io/9routerx/)
+[Quick Start](#quick-start) • [Why 9RouterX?](#why-9routerx) • [Key Features](#key-features) • [Supported Clients](#supported-ai-coding-clients) • [Free Providers](#free-ai-providers-and-keyless-models-catalog) • [Database Sharing](#sharing-a-database-with-9router) • [Screenshots](#screenshots) • [Setup Guide](#setup-guide-summary-and-wiki-documentation) • [Comparison](#architecture-comparison) • [FAQ](#frequently-asked-questions-faq) • [Docs](#docs) • [Wiki](https://yanstd888.github.io/9routerx/)
 
 **155** Providers · **28** OAuth One-Click · **29** Free-Tier · **248** Free Models (**24** Keyless) · **20–40%** Token Saved · **5** Platforms · **1** Binary
 
@@ -250,7 +250,7 @@ export GEMINI_API_BASE_URL="http://127.0.0.1:20128/v1"
 export GEMINI_API_KEY="sk-YOUR-KEY"
 ```
 
-## Free AI Providers & Keyless Models Catalog
+## Free AI Providers and Keyless Models Catalog
 
 9RouterX includes a built-in catalog of **248 free models across 36 providers** (verified in `freemodels.go`), featuring **24 keyless models** (`antigravity`, `opencode`, `blackbox`) that work out of the box without upstream provider registration or external API keys.
 
@@ -331,7 +331,7 @@ You can register any custom OpenAI-compatible or Anthropic-compatible upstream s
 * **Connections & 1-Click OAuth Manager:** Configure all 155 providers, trigger browser OAuth flows for 28 providers, import Kiro `external_idp` JSON credentials, inspect live model health latency, and assemble multi-tier combo routing presets (`fallback`, `round-robin`, `sticky`, `capacity`, `fusion`).
 * **Per-Key Governance & Custom Usage Ranges:** Issue client API keys (`sk-...`) with daily USD hard cutoffs, request rate limits, IP whitelists, and custom system prompts; inspect Tremor-style usage charts across `12h`, `14d`, or custom date ranges; and inspect full request/response JSON payloads in the Extended Logging & Payload Inspector.
 
-## Setup Guide Summary & Wiki Documentation
+## Setup Guide Summary and Wiki Documentation
 
 For advanced deployment and module configuration, refer to the [**Official 9RouterX Documentation & Wiki**](https://yanstd888.github.io/9routerx/):
 
