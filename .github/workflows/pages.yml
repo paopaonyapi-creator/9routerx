@@ -76,7 +76,7 @@ jobs:
       - name: Assert site entry points
         run: |
           set -euo pipefail
-          for f in _site/index.html _site/style.css _site/tg.html _site/tg/index.html _site/llms.txt; do
+          for f in _site/index.html _site/style.css _site/tg.html _site/tg/index.html _site/llms.txt _site/llms-full.txt _site/sitemap.xml _site/robots.txt; do
             test -f "$f" || { echo "::error::$f missing from the site output"; exit 1; }
           done
           grep -q 'href="style.css"' _site/index.html || {

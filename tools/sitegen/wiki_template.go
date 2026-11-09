@@ -1,14 +1,17 @@
 // 9RouterX — source port and modifications by https://github.com/yanstd888/ — https://t.me/aiclub_id
 package main
 
+import "encoding/json"
+
 // wikiData is what the wiki template renders.
 type wikiData struct {
 	Page  *page
 	Pages []*page
 	// Groups is the sidebar split by section heading. The first group has no
 	// heading, which is how the dashboard's own top nav group renders.
-	Groups []pageGroup
-	Repo   string
+	Groups     []pageGroup
+	Repo       string
+	Breadcrumb json.RawMessage
 }
 
 // pageGroup is one sidebar section: its heading (empty for the first group, which
@@ -67,7 +70,12 @@ var wikiTemplate = `<!doctype html>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ .Page.Title }} — 9RouterX Wiki</title>
-    <meta name="description" content="9RouterX documentation: {{ .Page.Title }}" />
+    <meta name="description" content="{{ .Page.Description }}" />
+    <link rel="canonical" href="https://yanstd888.github.io/9routerx/{{ .Page.Slug }}.html" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <link rel="alternate" type="text/plain" title="LLM documentation map" href="llms.txt" />
+    <link rel="alternate" type="text/plain" title="Full LLM documentation" href="llms-full.txt" />
+    <script type="application/ld+json">{{ .Breadcrumb }}</script>
     <!-- The dashboard's glyph pairing (web/src/index.css): Manrope for display
          and body, Geist Mono for code and technical labels. Same link block as
          the project page, so both halves of the site load one set of faces. -->

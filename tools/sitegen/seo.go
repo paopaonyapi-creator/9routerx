@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"html"
@@ -109,6 +110,80 @@ func writeLLMFiles(readmePath, assetsDir, wikiDir, outDir string) error {
 	return writeFile(filepath.Join(outDir, "llms.txt"), []byte(brief.String()))
 }
 
+var faqDetails = regexp.MustCompile(`(?s)<details>\s*<summary>(.*?)</summary>(.*?)</details>`)
+var inlineMarkdown = regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
+var faqHeading = regexp.MustCompile(`(?s)<h2(?:\s[^>]*)?>.*?</h2>`)
+
+func faqSchema(body string) json.RawMessage {
+	headings := faqHeading.FindAllStringIndex(body, -1)
+	start, end := -1, len(body)
+	for i, heading := range headings {
+		if plainFAQText(body[heading[0]:heading[1]]) != "Frequently Asked Questions (FAQ)" {
+			continue
+		}
+		start = heading[1]
+		if i+1 < len(headings) {
+			end = headings[i+1][0]
+		}
+		break
+	}
+	if start < 0 {
+		return nil
+	}
+	body = body[start:end]
+	var questions []map[string]any
+	for _, match := range faqDetails.FindAllStringSubmatch(body, -1) {
+		question := plainFAQText(match[1])
+		answer := plainFAQText(match[2])
+		if question == "" || answer == "" {
+			continue
+		}
+		questions = append(questions, map[string]any{
+			"@type": "Question", "name": question,
+			"acceptedAnswer": map[string]any{"@type": "Answer", "text": answer},
+		})
+	}
+	if len(questions) == 0 {
+		return nil
+	}
+	data, _ := json.Marshal(map[string]any{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": questions})
+	return data
+}
+
+func plainFAQText(src string) string {
+	src = html.UnescapeString(corpusTag.ReplaceAllString(src, ""))
+	src = inlineMarkdown.ReplaceAllString(src, "$1")
+	src = strings.ReplaceAll(strings.ReplaceAll(src, "**", ""), "`", "")
+	return strings.Join(strings.Fields(src), " ")
+}
+
+func softwareSchema(version string) json.RawMessage {
+	data := map[string]any{
+		"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "9RouterX",
+		"applicationCategory": "DeveloperApplication", "operatingSystem": "Linux, macOS, Windows",
+		"description": "Single-binary Go AI router and token saver across 155 providers and 248 free models in 36 providers (24 cataloged keyless models).",
+		"url":         siteBaseURL, "downloadUrl": "https://github.com/yanstd888/9routerx/releases",
+		"author": map[string]any{"@type": "Person", "name": "Muhammad Dian", "url": "https://yanstd888.github.io/"},
+		"offers": map[string]any{"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+	}
+	if version != "" {
+		data["softwareVersion"] = version
+	}
+	encoded, _ := json.Marshal(data)
+	return encoded
+}
+
+func breadcrumbSchema(p *page) json.RawMessage {
+	data, _ := json.Marshal(map[string]any{
+		"@context": "https://schema.org", "@type": "BreadcrumbList",
+		"itemListElement": []map[string]any{
+			{"@type": "ListItem", "position": 1, "name": "9RouterX Docs", "item": siteBaseURL},
+			{"@type": "ListItem", "position": 2, "name": html.UnescapeString(p.Title), "item": siteBaseURL + p.Slug + ".html"},
+		},
+	})
+	return data
+}
+
 var corpusTag = regexp.MustCompile(`<[^>]+>`)
 
 // Keep code examples verbatim while removing prose-only HTML wrappers.
@@ -128,11 +203,37 @@ func cleanCorpus(src string) string {
 			continue
 		}
 		if fence == "" {
-			line = html.UnescapeString(corpusTag.ReplaceAllString(line, ""))
+			line = cleanCorpusLine(line)
 		}
 		lines = append(lines, line)
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func cleanCorpusLine(line string) string {
+	var out strings.Builder
+	for len(line) > 0 {
+		start := strings.IndexByte(line, '`')
+		if start < 0 {
+			out.WriteString(html.UnescapeString(corpusTag.ReplaceAllString(line, "")))
+			break
+		}
+		out.WriteString(html.UnescapeString(corpusTag.ReplaceAllString(line[:start], "")))
+		count := 1
+		for start+count < len(line) && line[start+count] == '`' {
+			count++
+		}
+		marker := line[start : start+count]
+		end := strings.Index(line[start+count:], marker)
+		if end < 0 {
+			out.WriteString(line[start:])
+			break
+		}
+		end += start + 2*count
+		out.WriteString(line[start:end])
+		line = line[end:]
+	}
+	return out.String()
 }
 
 type sitemapEntry struct {

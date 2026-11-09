@@ -152,10 +152,11 @@ const pageTemplate = `<!doctype html>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>9RouterX — Local AI gateway &amp; token saver</title>
-    <meta
-      name="description"
-      content="9RouterX is a single-binary AI gateway and token saver in Go. Serve OpenAI, Claude and Gemini compatible APIs to your CLI tools with automatic fallback across 40+ providers."
-    />
+    <meta name="description" content="9RouterX routes across 155 AI providers and 248 free models in 36 providers from one Go binary, with an embedded dashboard and token saver." />
+    <link rel="canonical" href="https://yanstd888.github.io/9routerx/index.html" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <link rel="alternate" type="text/plain" title="LLM documentation map" href="llms.txt" />
+    <link rel="alternate" type="text/plain" title="Full LLM documentation" href="llms-full.txt" />
     <!-- The dashboard's glyph pairing (web/src/index.css): Manrope for display
          and body, Geist Mono for code and technical labels. Google Fonts
          serves the same variable-font weight ranges the dashboard vendors
@@ -213,21 +214,8 @@ const pageTemplate = `<!doctype html>
     <link rel="icon" type="image/png" href="favicon-32x32.png" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <meta property="og:image" content="` + ogImageURL + `" />
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "9RouterX",
-    "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "Linux, macOS, Windows, FreeBSD",
-    "description": "Single-binary Go AI router, local LLM gateway and token saver. Route Claude Code, Cursor, Codex and other AI coding agents across 155 providers, 28 OAuth integrations and 248 free models (24 keyless) with 20-40% token savings.",
-    "url": "https://yanstd888.github.io/9routerx/",
-    "downloadUrl": "https://github.com/yanstd888/9routerx/releases",
-    "softwareVersion": "1.1.3",
-    "author": { "@type": "Person", "name": "Muhammad Dian", "url": "https://yanstd888.github.io/" },
-    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
-  }
-  </script>
+    <script type="application/ld+json">{{ .Software }}</script>
+    {{ if .FAQ }}<script type="application/ld+json">{{ .FAQ }}</script>{{ end }}
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>

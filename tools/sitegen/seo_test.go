@@ -2,9 +2,11 @@
 package main
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -82,5 +84,45 @@ func TestLLMFiles(t *testing.T) {
 	brief := readFile(t, filepath.Join(out, "llms.txt"))
 	if !strings.Contains(brief, "install.html") || !strings.Contains(brief, "api.html") {
 		t.Fatal("documentation map is incomplete")
+	}
+}
+
+func TestCorpusInlineCode(t *testing.T) {
+	src := "<p>Use `.changes/<pr-number>-<slug>.md` and ``<literal>`value``.</p>"
+	want := "Use `.changes/<pr-number>-<slug>.md` and ``<literal>`value``."
+	if got := cleanCorpus(src); got != want {
+		t.Fatalf("corpus inline code = %q, want %q", got, want)
+	}
+}
+
+func TestStructuredData(t *testing.T) {
+	body := []byte(`<h1 id="readme">Readme</h1><h2>Frequently Asked Questions (FAQ)</h2><details><summary>Can I use &quot;quotes&quot;?</summary><p>Yes, with &lt;/script&gt; escaped.</p></details><h2>Other</h2><details><summary>Not an FAQ</summary><p>Exclude this answer.</p></details>`)
+	for _, version := range []string{"9.9.9", ""} {
+		output, err := renderPage(body, "yanstd888/9routerx", heroStats{Version: version})
+		if err != nil {
+			t.Fatal(err)
+		}
+		blocks := regexp.MustCompile(`(?s)<script type="application/ld\+json">(.*?)</script>`).FindAllSubmatch(output, -1)
+		if len(blocks) != 2 {
+			t.Fatalf("JSON-LD blocks = %d, want 2", len(blocks))
+		}
+		var software map[string]any
+		if err := json.Unmarshal(blocks[0][1], &software); err != nil {
+			t.Fatal(err)
+		}
+		if version == "" {
+			if _, ok := software["softwareVersion"]; ok {
+				t.Fatal("empty version was not omitted")
+			}
+		} else if software["softwareVersion"] != version {
+			t.Fatalf("version = %v, want %s", software["softwareVersion"], version)
+		}
+		var faq map[string]any
+		if err := json.Unmarshal(blocks[1][1], &faq); err != nil {
+			t.Fatal(err)
+		}
+		if faq["@type"] != "FAQPage" || len(faq["mainEntity"].([]any)) != 1 {
+			t.Fatalf("invalid FAQ schema: %v", faq)
+		}
 	}
 }

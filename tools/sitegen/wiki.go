@@ -27,7 +27,8 @@ type page struct {
 	// page is published at.
 	Slug string
 	// Title comes from the frontmatter, falling back to the first heading.
-	Title string
+	Title       string
+	Description string
 	// Order is the frontmatter value used to sort the sidebar.
 	Order int
 	// Section is the sidebar heading this page sits under. A page without one
@@ -97,8 +98,9 @@ func generateWiki(wikiDir, outDir, repo string) error {
 	}
 
 	for _, p := range pages {
+		p.Description = describePage(p)
 		var buf bytes.Buffer
-		if err := tmpl.Execute(&buf, wikiData{Page: p, Pages: pages, Groups: groupBySection(pages), Repo: repo}); err != nil {
+		if err := tmpl.Execute(&buf, wikiData{Page: p, Pages: pages, Groups: groupBySection(pages), Repo: repo, Breadcrumb: breadcrumbSchema(p)}); err != nil {
 			return fmt.Errorf("render wiki page %s: %w", p.Slug, err)
 		}
 		if err := writeFile(filepath.Join(outDir, p.Slug+".html"), buf.Bytes()); err != nil {

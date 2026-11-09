@@ -23,6 +23,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
@@ -295,10 +296,12 @@ func renderPage(body []byte, repo string, stats heroStats) ([]byte, error) {
 
 	var buf bytes.Buffer
 	data := struct {
-		Body  template.HTML
-		Repo  string
-		Stats heroStats
-	}{Body: template.HTML(body), Repo: repo, Stats: stats}
+		Body     template.HTML
+		Repo     string
+		Stats    heroStats
+		Software json.RawMessage
+		FAQ      json.RawMessage
+	}{Body: template.HTML(body), Repo: repo, Stats: stats, Software: softwareSchema(stats.Version), FAQ: faqSchema(string(body))}
 
 	if err := tmpl.Execute(&buf, data); err != nil {
 		return nil, fmt.Errorf("execute template: %w", err)
