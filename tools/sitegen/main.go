@@ -267,6 +267,14 @@ func isAsset(dest []byte) bool {
 }
 
 func renderPage(body []byte, repo string, stats heroStats) ([]byte, error) {
+	// The hero owns the page H1; only the first embedded README title is demoted.
+	if start := bytes.Index(body, []byte("<h1")); start >= 0 {
+		if end := bytes.Index(body[start:], []byte("</h1>")); end >= 0 {
+			body = bytes.Clone(body)
+			body[start+2] = '2'
+			body[start+end+3] = '2'
+		}
+	}
 	tmpl, err := template.New("page").Funcs(template.FuncMap{
 		"blob": func(p string) string {
 			return fmt.Sprintf("https://github.com/%s/blob/main/%s", repo, p)

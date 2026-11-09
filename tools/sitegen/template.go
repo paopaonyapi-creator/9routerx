@@ -242,7 +242,7 @@ const pageTemplate = `<!doctype html>
                presents the same mark on a dark panel, so the masthead does
                too. The tile stays dark in BOTH themes. -->
           <span class="wordmark-mark" aria-hidden="true"
-            ><img src="logo-9routerx-128.png" alt="" width="128" height="128" loading="lazy" decoding="async"
+            ><img src="logo-9routerx-128.png" alt="9RouterX — Local AI Gateway and Token Saver Logo" width="128" height="128" loading="lazy" decoding="async"
           /></span>
           <span>9RouterX</span>
         </a>
@@ -273,7 +273,7 @@ const pageTemplate = `<!doctype html>
       <section class="hero" aria-label="9RouterX at a glance">
         <div class="hero-inner">
           <p class="hero-eyebrow">Local AI gateway &middot; single binary &middot; Go + Svelte</p>
-          <h1 id="hero-title">One endpoint. Every model. Tokens saved automatically.</h1>
+          <h1 id="hero-title">9RouterX — One Endpoint. Every AI Model. Tokens Saved Automatically.</h1>
           <p class="hero-sub">
             9RouterX is a local AI gateway and LLM router in <strong>one Go binary</strong>. Point
             Claude Code, Codex, Cursor, or any OpenAI- or Claude-compatible CLI at one endpoint and

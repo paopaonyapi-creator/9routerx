@@ -980,9 +980,11 @@ h4 {
   scroll-margin-top: 5.5rem;
 }
 
-.prose > div[align="center"] h1 {
+.prose > div[align="center"] h2:first-of-type {
   margin-top: 0;
   font-size: clamp(1.75rem, 5vw, 2.4rem);
+  padding-top: 0;
+  border-top: 0;
 }
 
 h2 {

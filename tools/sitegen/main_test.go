@@ -185,7 +185,7 @@ func TestGenerate(t *testing.T) {
 		`href="https://github.com/yanstd888/9routerx/blob/main/docs/DATABASE.md"`,
 		`src="docs/screenshots/providers.png"`,
 		`src="https://img.shields.io/badge/build-passing-green"`,
-		`<h1 id="title">Title</h1>`,
+		`<h2 id="title">Title</h2>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("index.html is missing %q", want)

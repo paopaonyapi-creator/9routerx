@@ -671,7 +671,7 @@ var wikiTemplate = `<!doctype html>
                the tile stays dark in BOTH themes, the way the dashboard
                presents the mark on its dark panel. -->
           <span class="wordmark-mark" aria-hidden="true"
-            ><img src="logo-9routerx-128.png" alt="" width="128" height="128" loading="lazy" decoding="async"
+            ><img src="logo-9routerx-128.png" alt="9RouterX — Local AI Gateway and Token Saver Logo" width="128" height="128" loading="lazy" decoding="async"
           /></span>
           <span>9RouterX</span>
         </a>
