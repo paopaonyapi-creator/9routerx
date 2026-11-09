@@ -1730,6 +1730,79 @@ h4 {
   white-space: nowrap;
 }
 
+/* ── Section motion: the hero's language, everywhere ────────────────────────
+   One enter (hero-rise, 0.5s, staggered), one ambient loop (hero-aura, 22s),
+   one content cycle (mock-chain, ~4s). No new timing functions, no bounce,
+   no scroll effects; prefers-reduced-motion switches every one of them off. */
+
+.catalog-card,
+.flow-card,
+.community-card,
+.feature-card {
+  animation: hero-rise 0.5s var(--ease) both;
+}
+
+.catalog-card:nth-child(2) { animation-delay: 0.05s; }
+.catalog-card:nth-child(3) { animation-delay: 0.1s; }
+.catalog-card:nth-child(4) { animation-delay: 0.15s; }
+.catalog-card:nth-child(5) { animation-delay: 0.2s; }
+
+.flow-card:nth-child(2) { animation-delay: 0.05s; }
+.flow-card:nth-child(3) { animation-delay: 0.1s; }
+.flow-card:nth-child(4) { animation-delay: 0.15s; }
+.flow-card:nth-child(5) { animation-delay: 0.2s; }
+.flow-card:nth-child(6) { animation-delay: 0.25s; }
+
+.community-card:nth-child(2) { animation-delay: 0.05s; }
+.community-card:nth-child(3) { animation-delay: 0.1s; }
+
+.feature-card:nth-child(2) { animation-delay: 0.05s; }
+.feature-card:nth-child(3) { animation-delay: 0.1s; }
+.feature-card:nth-child(4) { animation-delay: 0.15s; }
+
+/* The catalog's aura: the hero's own ambient loop, one section lower. */
+#catalog {
+  position: relative;
+  overflow: hidden;
+}
+
+#catalog::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background: radial-gradient(36rem 22rem at 72% 20%, color-mix(in srgb, var(--brand) 7%, transparent), transparent 70%);
+  animation: hero-aura 22s var(--ease) infinite alternate;
+  pointer-events: none;
+  will-change: transform;
+}
+
+#catalog > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* The fallback chain breathes: the three tiers take turns holding the
+   reader's eye, ~4s per lap, transform/opacity only, never stopping — which
+   is why reduced-motion kills it. */
+.mock-chain span {
+  transition: none;
+}
+
+.mock-chain span:nth-child(1) { animation: mock-chain-cycle 4s var(--ease) infinite; }
+.mock-chain span:nth-child(3) { animation: mock-chain-cycle 4s var(--ease) 1.33s infinite; }
+.mock-chain span:nth-child(5) { animation: mock-chain-cycle 4s var(--ease) 2.66s infinite; }
+
+@keyframes mock-chain-cycle {
+  0%, 100% {
+    opacity: 0.45;
+    color: var(--text-muted);
+  }
+  33% {
+    opacity: 1;
+    color: var(--text);
+  }
+}
+
 /* ── Reduced motion: the hero stands still, everything readable at once ──── */
 
 @media (prefers-reduced-motion: reduce) {
@@ -1743,8 +1816,19 @@ h4 {
   .hero-stats,
   .hero-shot,
   .hero-chips li,
+  .catalog-card,
+  .flow-card,
+  .community-card,
+  .feature-card,
+  .mock-chain span,
   .colophon-finale::before {
     animation: none;
+  }
+  .menu-toggle,
+  .menu-line,
+  .site-nav,
+  .colophon-col a {
+    transition: none;
   }
   .install-caret {
     display: none;
