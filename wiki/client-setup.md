@@ -31,7 +31,7 @@ curl http://localhost:20128/v1/chat/completions \
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` | `20128` | HTTP port |
-| `HOST` / `BIND_ADDR` | all interfaces | Listener address |
+| `HOST` / `BIND_ADDR` | `127.0.0.1` (loopback) | Listener address; explicit `0.0.0.0` or `*` allows all interfaces |
 | `DATA_DIR` | `~/.9router` (`%APPDATA%/9router` on Windows) | Data root |
 | `DB_PATH` | `$DATA_DIR/db/data.sqlite` | SQLite file |
 | `INITIAL_PASSWORD` | unset (fallback `123456` locally) | First dashboard password |
@@ -52,8 +52,9 @@ curl http://localhost:20128/v1/chat/completions \
 - **Proxy routes** require an active client API key (`Authorization: Bearer` / `X-API-Key`).
 - **Dashboard APIs** require a session cookie, CLI token, or API key; destructive
   operations (shutdown, update, DB import) require a session or CLI token.
-- The API server defaults to all interfaces — bind to localhost or protect the
-  port outside trusted machines.
+- The API server defaults to loopback (`127.0.0.1`). Access from other machines
+  requires explicit `HOST=0.0.0.0` or `HOST=*`; protect that port with strong
+  dashboard authentication and trusted network controls.
 
 ## Trusting a proxy
 

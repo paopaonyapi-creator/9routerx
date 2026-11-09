@@ -58,6 +58,10 @@ shutdown helper. It requests a stop of the verified listener PID only. For a
 
 ## First run and side-by-side operation
 
+9RouterX now listens on `127.0.0.1` by default. Existing LAN or container
+setups that relied on implicit all-interface binding must opt in with
+`HOST=0.0.0.0` (or `HOST=*`) and keep dashboard authentication enabled.
+
 When `9routerx start` has no pidfile in this `DATA_DIR` and the port is occupied,
 a terminal shows:
 

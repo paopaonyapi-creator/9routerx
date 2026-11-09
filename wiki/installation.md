@@ -33,6 +33,7 @@ No flags required:
 | | Default |
 |---|---|
 | Port | `20128` |
+| Listener | `127.0.0.1` (loopback); explicit `HOST=0.0.0.0` or `HOST=*` enables all interfaces |
 | Data | `~/.9router` (`%APPDATA%/9router` on Windows) |
 | Dashboard | `http://localhost:20128` |
 | Initial password | `123456` (localhost only) |
@@ -91,6 +92,10 @@ pick `--backend cron`), and on Windows install registers a scheduled task via
 `--backend systemd|launchd|openrc|runit|cron`.
 
 ## Docker
+
+For container port publishing, explicitly set `HOST=0.0.0.0` inside the
+container; the default loopback listener is not reachable through a published
+port. Require strong dashboard authentication before allowing network access.
 
 ```bash
 docker run -d --name 9routerx --restart unless-stopped \

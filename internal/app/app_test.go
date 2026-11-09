@@ -383,18 +383,28 @@ func TestRun_StartFailure(t *testing.T) {
 }
 
 func TestProvideServer_WithHost(t *testing.T) {
-	var lc fx.Lifecycle = &fxLifecycleStub{}
-	params := app.ServerParams{
-		Config: &config.Config{
-			Host: "127.0.0.1",
-			Port: 20145,
-		},
-		Lifecycle: lc,
-		Handler:   http.NotFoundHandler(),
-	}
-	srv := app.ProvideServer(params)
-	if srv.Addr != "127.0.0.1:20145" {
-		t.Errorf("expected 127.0.0.1:20145, got %s", srv.Addr)
+	for _, tc := range []struct {
+		host string
+		want string
+	}{
+		{"", "127.0.0.1:20145"},
+		{"127.0.0.1", "127.0.0.1:20145"},
+		{"*", "0.0.0.0:20145"},
+		{"0.0.0.0", "0.0.0.0:20145"},
+		{"::", "[::]:20145"},
+		{"::1", "[::1]:20145"},
+		{"localhost", "localhost:20145"},
+	} {
+		t.Run(tc.want+"/"+tc.host, func(t *testing.T) {
+			params := app.ServerParams{
+				Config:    &config.Config{Host: tc.host, Port: 20145},
+				Lifecycle: &fxLifecycleStub{},
+				Handler:   http.NotFoundHandler(),
+			}
+			if srv := app.ProvideServer(params); srv.Addr != tc.want {
+				t.Errorf("address = %s, want %s", srv.Addr, tc.want)
+			}
+		})
 	}
 }
 

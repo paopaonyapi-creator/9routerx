@@ -305,7 +305,7 @@ The web package has no frontend unit/component test script. Dashboard verificati
 
 - **Fresh database:** Go bootstraps the upstream core schema additively on startup (no legacy-JSON import or pre-migration backups — those still need upstream once).
 - **Compatibility:** selected upstream contracts are ported, but v0.5.86 items in the changelog are partial and the declared baseline remains v0.5.85.
-- **Network exposure:** the default listener is all interfaces. Set `HOST=127.0.0.1` behind a trusted reverse proxy or otherwise protect the port.
+- **Network exposure:** the default listener is loopback (`127.0.0.1`). LAN or container access requires explicit `HOST=0.0.0.0` or `HOST=*`; use strong dashboard authentication and protect the exposed port.
 - **Dashboard security:** login is required by default when settings are missing/unreadable, but compatibility still accepts the well-known password locally until rotated. Set `INITIAL_PASSWORD` explicitly.
 - **Profiling:** never enable `PPROF_ENABLED` on an untrusted network without separate access controls.
 - **Secrets:** SQLite contains provider credentials; the local CLI secret and JWT secret also live under `DATA_DIR`.

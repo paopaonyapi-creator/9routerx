@@ -90,12 +90,13 @@ const (
 
 // ProvideServer creates *http.Server and registers lifecycle hooks.
 func ProvideServer(p ServerParams) *http.Server {
-	var addr string
-	if p.Config.Host != "" {
-		addr = net.JoinHostPort(p.Config.Host, strconv.Itoa(p.Config.Port))
-	} else {
-		addr = fmt.Sprintf(":%d", p.Config.Port)
+	host := strings.TrimSpace(p.Config.Host)
+	if host == "" {
+		host = "127.0.0.1"
+	} else if host == "*" {
+		host = "0.0.0.0"
 	}
+	addr := net.JoinHostPort(host, strconv.Itoa(p.Config.Port))
 	server := &http.Server{
 		Addr:    addr,
 		Handler: p.Handler,
@@ -111,6 +112,9 @@ func ProvideServer(p ServerParams) *http.Server {
 
 	p.Lifecycle.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
+			if ip := net.ParseIP(host); ip != nil && ip.IsUnspecified() {
+				appLog.Warn("server", "listening on all interfaces; use a strong dashboard password and authenticated tunnels", "addr", addr)
+			}
 			autoUpdate := p.CLIParams.AutoUpdate
 			if !autoUpdate && p.Repo != nil {
 				if settings, sErr := p.Repo.GetSettings(); sErr == nil && settings != nil {
