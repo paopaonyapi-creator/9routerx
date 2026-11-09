@@ -14,6 +14,42 @@ Release history up to the fork point is archived in the upstream repo's
   the pending-fragment splice now lands under this Unreleased heading instead
   of above the file title.
 
+## [v1.1.4] - 2026-11-09
+
+### Security
+
+- **Dashboard management is operator-only** — client engine keys can no longer
+  create, rotate, delete or re-policy API keys, change settings or trigger
+  updates; those routes answer `403` unless the caller holds a dashboard session
+  or the local CLI token. Two read-only metadata endpoints
+  (`/api/providers/catalog`, `/api/models/caps`) still accept an engine key.
+- **API keys are stored hashed again** — create and rotate keep only an
+  Argon2id verifier plus a SHA-256 lookup index; the secret is returned once and
+  never written to the database. Rows from the plaintext era stay revealable
+  until they are rotated, and spend accounting follows the row so quotas,
+  budgets and the ledger prune keep working across a rotation.
+- **Locality no longer trusts the Host header** — the default-password guard and
+  provider-node exceptions classify callers by socket peer (and the trusted
+  client-IP resolver for proxied logins), so a spoofed `Host: 127.0.0.1` gains
+  nothing.
+- **Updater is decompression-bomb-proof** — release archives are capped at 64
+  entries / 256 MiB per entry / 512 MiB expanded, ZIP symlinks are refused, and
+  the extracted bytes must parse as an executable for the running platform
+  (ELF / Mach-O / PE) before anything replaces the binary.
+- **Fail-closed defaults** — an enabled A2A server without a configured token
+  refuses every request; the gateway binds `127.0.0.1` unless `HOST` says
+  otherwise; key-reveal responses carry no-store headers and an audit line.
+- **Plaintext storage is announced** — without `ROUTER_MASTER_KEY`, the boot
+  log and the dashboard both say credential encryption is OFF.
+
+### Changed
+
+- **403 on operator-only routes** carries the explicit `forbidden` error code
+  instead of the quota-shaped one the status mapping produced.
+- **Budget cutoff wording** — README, wiki and the Plans dialog now say the
+  ceiling is checked when a request starts (a request already in flight can
+  overshoot slightly) instead of implying a continuous limit.
+
 ## [v1.1.3] - 2026-11-08
 
 ### Added
