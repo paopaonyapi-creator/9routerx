@@ -4,6 +4,7 @@ package dashboard
 import (
 	"io"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -60,95 +61,95 @@ func (h *DashboardHandler) HandleAuthLogin(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-		if h.verifyDashboardPassword(payload.Password) {
-			auth.RecordLoginSuccess(ip)
-			if payload.NewPassword != "" {
-				if err := h.changeDashboardPassword(payload.Password, payload.NewPassword); err != nil {
-					noStore(w)
-					handlerutil.WriteJSON(w, http.StatusBadRequest, map[string]any{
-						"success": false,
-						"error":   err.Error(),
-					})
-					return
-				}
-				raw = settingsOrEmpty(h)
-			} else if mustChangeDefaultPassword(r, raw) {
-				securitylog.Record(securitylog.Entry{
-					Type:      "login_default_password",
-					Severity:  "critical",
-					IP:        ip,
-					Actor:     "dashboard",
-					Method:    "POST",
-					Path:      r.URL.Path,
-					Status:    http.StatusForbidden,
-					Detail:    "Default password must be changed before remote access",
-					UserAgent: r.UserAgent(),
-				})
+	if h.verifyDashboardPassword(payload.Password) {
+		auth.RecordLoginSuccess(ip)
+		if payload.NewPassword != "" {
+			if err := h.changeDashboardPassword(payload.Password, payload.NewPassword); err != nil {
 				noStore(w)
-				handlerutil.WriteJSON(w, http.StatusForbidden, map[string]any{
+				handlerutil.WriteJSON(w, http.StatusBadRequest, map[string]any{
 					"success": false,
-					"error": "Default password must be changed before remote access. " +
-						"Change it from the local machine (or set INITIAL_PASSWORD).",
-					"mustChangePassword": true,
+					"error":   err.Error(),
 				})
 				return
 			}
+			raw = settingsOrEmpty(h)
+		} else if mustChangeDefaultPassword(r, raw) {
 			securitylog.Record(securitylog.Entry{
-				Type:      "login_success",
-				Severity:  "info",
+				Type:      "login_default_password",
+				Severity:  "critical",
 				IP:        ip,
 				Actor:     "dashboard",
 				Method:    "POST",
 				Path:      r.URL.Path,
-				Status:    http.StatusOK,
-				Detail:    "Password sign-in",
+				Status:    http.StatusForbidden,
+				Detail:    "Default password must be changed before remote access",
 				UserAgent: r.UserAgent(),
 			})
-			// Compliance trail (FASE 10.6): the sign-in sits beside the security
-			// log entry, which owns the request-level detail.
-			h.recordAudit(r, AuditActionLogin, ip, nil, map[string]any{"result": "success"})
-			token, err := auth.Sign(auth.Secret(), time.Now())
-			if err != nil {
-				writePlainError(w, http.StatusInternalServerError, "Failed to create session")
-				return
-			}
-			auth.SetCookie(w, r, token)
 			noStore(w)
-			handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
-				"success":            true,
-				"mustChangePassword": false,
+			handlerutil.WriteJSON(w, http.StatusForbidden, map[string]any{
+				"success": false,
+				"error": "Default password must be changed before remote access. " +
+					"Change it from the local machine (or set INITIAL_PASSWORD).",
+				"mustChangePassword": true,
 			})
-			return
-		}
-
-		remaining := auth.RecordLoginFail(ip)
-		if locked, retryAfter := auth.LoginLocked(ip); locked {
-			securitylog.Record(securitylog.Entry{
-				Type:      "login_locked",
-				Severity:  "warn",
-				IP:        ip,
-				Actor:     "dashboard",
-				Method:    "POST",
-				Path:      r.URL.Path,
-				Status:    http.StatusTooManyRequests,
-				Detail:    "Login locked after failed attempts",
-				UserAgent: r.UserAgent(),
-			})
-			writeLoginLocked(w, retryAfter)
 			return
 		}
 		securitylog.Record(securitylog.Entry{
-			Type:      "login_failed",
+			Type:      "login_success",
+			Severity:  "info",
+			IP:        ip,
+			Actor:     "dashboard",
+			Method:    "POST",
+			Path:      r.URL.Path,
+			Status:    http.StatusOK,
+			Detail:    "Password sign-in",
+			UserAgent: r.UserAgent(),
+		})
+		// Compliance trail (FASE 10.6): the sign-in sits beside the security
+		// log entry, which owns the request-level detail.
+		h.recordAudit(r, AuditActionLogin, ip, nil, map[string]any{"result": "success"})
+		token, err := auth.Sign(auth.Secret(), time.Now())
+		if err != nil {
+			writePlainError(w, http.StatusInternalServerError, "Failed to create session")
+			return
+		}
+		auth.SetCookie(w, r, token)
+		noStore(w)
+		handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
+			"success":            true,
+			"mustChangePassword": false,
+		})
+		return
+	}
+
+	remaining := auth.RecordLoginFail(ip)
+	if locked, retryAfter := auth.LoginLocked(ip); locked {
+		securitylog.Record(securitylog.Entry{
+			Type:      "login_locked",
 			Severity:  "warn",
 			IP:        ip,
 			Actor:     "dashboard",
 			Method:    "POST",
 			Path:      r.URL.Path,
-			Status:    http.StatusUnauthorized,
-			Detail:    "Invalid password",
+			Status:    http.StatusTooManyRequests,
+			Detail:    "Login locked after failed attempts",
 			UserAgent: r.UserAgent(),
 		})
-		h.recordAudit(r, AuditActionLoginFailed, ip, nil, map[string]any{"result": "failure"})
+		writeLoginLocked(w, retryAfter)
+		return
+	}
+	securitylog.Record(securitylog.Entry{
+		Type:      "login_failed",
+		Severity:  "warn",
+		IP:        ip,
+		Actor:     "dashboard",
+		Method:    "POST",
+		Path:      r.URL.Path,
+		Status:    http.StatusUnauthorized,
+		Detail:    "Invalid password",
+		UserAgent: r.UserAgent(),
+	})
+	h.recordAudit(r, AuditActionLoginFailed, ip, nil, map[string]any{"result": "failure"})
 	noStore(w)
 	handlerutil.WriteJSON(w, http.StatusUnauthorized, map[string]any{
 		"error":               "Invalid password. " + strconv.Itoa(remaining) + " attempt(s) left before lockout.",
@@ -344,10 +345,15 @@ func loginLabel(raw map[string]any, key, fallback string) string {
 // mustChangeDefaultPassword mirrors upstream's remote fresh-install guard: the
 // well-known default password on a non-local connection forces a rotation
 // before any session cookie is issued.
+func loginRequestIsLocal(r *http.Request) bool {
+	client, err := netip.ParseAddr(auth.LoginClientIP(r))
+	return err == nil && client.Unmap().IsLoopback()
+}
+
 func mustChangeDefaultPassword(r *http.Request, raw map[string]any) bool {
 	return !hasStoredPassword(raw) &&
 		config.LoadConfig().InitialPassword == "" &&
-		!nodeRequestIsLocal(r)
+		!loginRequestIsLocal(r)
 }
 
 // strPtr maps an empty identity claim to JSON null (upstream status shape).

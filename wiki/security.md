@@ -27,6 +27,11 @@ Settings → Profile. On a remote host the default password is blocked (CVE-2026
 
 ## Client IP and rate-limit bucketing
 
+Locality never trusts the request Host header. Provider-node exceptions use the
+direct loopback socket peer; default-password checks use the trusted client-IP
+resolver below. A reverse proxy without trusted end-client information still
+looks like its socket peer, so configure that trust explicitly before exposure.
+
 A forwarded client-IP header is only read when the TCP peer is inside the trusted
 set. Otherwise a client could rotate `X-Forwarded-For` and give every login
 attempt its own rate-limit bucket.

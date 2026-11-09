@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"syscall"
@@ -693,24 +694,11 @@ func isValidHTTPURL(v string) bool {
 	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
-// loopbackRequestHosts are hosts considered local callers (upstream LOOPBACK_HOSTS).
-var loopbackRequestHosts = map[string]bool{"localhost": true, "127.0.0.1": true, "::1": true}
-
-// nodeRequestIsLocal mirrors dashboardGuard.isLocalRequest: loopback peers may
-// reference self-hosted provider nodes, so the SSRF guard is skipped for them.
+// Only the socket peer establishes provider-node locality; Host is supplied
+// by the caller and must not bypass private-address validation.
 func nodeRequestIsLocal(r *http.Request) bool {
-	host := strings.ToLower(r.Host)
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = strings.Trim(h, "[]")
-	}
-	if loopbackRequestHosts[host] {
-		return true
-	}
-	remote, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil {
-		return loopbackRequestHosts[strings.Trim(strings.ToLower(remote), "[]")]
-	}
-	return false
+	peer, err := netip.ParseAddrPort(r.RemoteAddr)
+	return err == nil && peer.Addr().Unmap().IsLoopback()
 }
 
 // validateNodeNetworkMessage maps an outbound probe error to a user-friendly

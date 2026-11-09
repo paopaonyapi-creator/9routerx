@@ -142,6 +142,8 @@ A stored bcrypt dashboard password wins. If none is stored, `INITIAL_PASSWORD` i
 
 The CLI token is deterministically derived from the persisted machine ID, CLI secret, and a fixed compatibility salt; only the derived value is compared.
 
+Locality does not trust Host: provider-node exceptions use the direct loopback peer, while default-password checks use the trusted client-IP resolver. Unknown or malformed addresses are non-local. Reverse proxies need explicit trusted end-client forwarding; a loopback proxy without that information remains indistinguishable from its local peer.
+
 ### Admin boundary
 
 Shutdown, update, health reset, and database export/import are “always protected”: they require a valid dashboard session or local CLI token and reject ordinary client API keys. Profiling is not mounted unless `PPROF_ENABLED=true`.
