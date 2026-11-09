@@ -311,7 +311,8 @@ func renderPage(readmeBody []byte, repo string, stats heroStats) ([]byte, error)
 		Stats    heroStats
 		Software json.RawMessage
 		FAQ      json.RawMessage
-	}{Repo: repo, Stats: stats, Software: softwareSchema(stats.Version), FAQ: faqSchema(string(readmeBody))}
+		Year     int
+	}{Repo: repo, Stats: stats, Software: softwareSchema(stats.Version), FAQ: faqSchema(string(readmeBody)), Year: time.Now().UTC().Year()}
 
 	if err := tmpl.Execute(&buf, data); err != nil {
 		return nil, fmt.Errorf("execute template: %w", err)
@@ -336,7 +337,8 @@ func renderReadmePage(body []byte, repo string) ([]byte, error) {
 	data := struct {
 		Body template.HTML
 		Repo string
-	}{Body: template.HTML(body), Repo: repo}
+		Year int
+	}{Body: template.HTML(body), Repo: repo, Year: time.Now().UTC().Year()}
 
 	if err := tmpl.Execute(&buf, data); err != nil {
 		return nil, fmt.Errorf("execute readme template: %w", err)

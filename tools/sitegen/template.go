@@ -801,10 +801,19 @@ Model:    antigravity/gemini-3.7-flash-medium
         </section>
       </div>
 
-      <!-- One line to the full README, which now lives at readme.html. The
-           styled install CTA lands with the footer polish; this keeps the
-           door reachable from the landing until then. -->
-      <p class="readme-cta">Prefer the full README? <a href="readme.html">Open it here</a>.</p>
+      <!-- The closing CTA: the install command one last time, in the same
+           copyable pill the hero carries, then the two honest lines. -->
+      <section class="cta" aria-labelledby="cta-title">
+        <h2 id="cta-title">Run your own AI router in one command.</h2>
+        <div class="hero-install cta-install">
+          <div class="install-head">
+            <span class="install-label">npm &mdash; any OS</span>
+            <button class="install-copy" id="copy-cta" type="button">Copy</button>
+          </div>
+          <pre><code id="cta-cmd" data-cmd="npm install -g 9routerx">npm install -g 9routerx</code></pre>
+        </div>
+        <p class="cta-note">MIT licensed. Free to run, forever. <a href="readme.html">Prefer the full README? Open it here</a>.</p>
+      </section>
     </main>
 
 ` + colophon + `
@@ -876,43 +885,51 @@ Model:    antigravity/gemini-3.7-flash-medium
           }, 24);
         }
 
-        // 3) Copy button. Clipboard API on the secure Pages origin, with an
-        //    execCommand fallback; feedback lands on the button itself so the
-        //    success never needs a toast.
-        var copyBtn = document.getElementById("copy-install");
-        if (copyBtn && cmd) {
-          copyBtn.addEventListener("click", function () {
-            var text = cmd.getAttribute("data-cmd") || cmd.textContent;
-            var done = function (ok) {
-              copyBtn.textContent = ok ? "Copied" : "Copy failed";
-              setTimeout(function () {
-                copyBtn.textContent = "Copy";
-              }, 1600);
-            };
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-              navigator.clipboard.writeText(text).then(
-                function () {
-                  done(true);
-                },
-                function () {
-                  done(false);
-                }
-              );
-            } else {
-              var ta = document.createElement("textarea");
-              ta.value = text;
-              document.body.appendChild(ta);
-              ta.select();
-              var ok = false;
-              try {
-                ok = document.execCommand("copy");
-              } catch (e) {
-                ok = false;
+        // 3) Copy buttons. Every .install-copy copies the command its own
+        //    install block carries in a [data-cmd] code element — the hero's
+        //    and the closing CTA's, which reuse the same pattern, so one
+        //    handler serves both.
+        var done = function (btn, ok) {
+          btn.textContent = ok ? "Copied" : "Copy failed";
+          setTimeout(function () {
+            btn.textContent = "Copy";
+          }, 1600);
+        };
+        var copyText = function (btn, text) {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(
+              function () {
+                done(btn, true);
+              },
+              function () {
+                done(btn, false);
               }
-              document.body.removeChild(ta);
-              done(ok);
+            );
+          } else {
+            var ta = document.createElement("textarea");
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            var ok = false;
+            try {
+              ok = document.execCommand("copy");
+            } catch (e) {
+              ok = false;
             }
-          });
+            document.body.removeChild(ta);
+            done(btn, ok);
+          }
+        };
+        var blocks = document.querySelectorAll(".install-copy");
+        for (var b = 0; b < blocks.length; b++) {
+          (function (btn) {
+            var block = btn.closest(".hero-install");
+            var source = block ? block.querySelector("code[data-cmd]") : null;
+            if (!source) return;
+            btn.addEventListener("click", function () {
+              copyText(btn, source.getAttribute("data-cmd") || source.textContent);
+            });
+          })(blocks[b]);
         }
       })();
     </script>
@@ -923,31 +940,60 @@ Model:    antigravity/gemini-3.7-flash-medium
 // colophon is the footer both published pages share — the homepage and
 // readme.html — kept in exactly one place so the two cannot drift. It is
 // spliced into both templates as a Go constant expression, and both execute it
-// with .Repo and the blob helper in scope.
+// with .Repo, .Year and the blob helper in scope: a brand row, three link
+// columns, the legal line, and the oversized wordmark finale with the glow
+// rising behind it.
 const colophon = `    <footer class="colophon">
-      <ul class="colophon-links">
-        <li><a href="installation.html">Wiki</a></li>
-        <li><a href="providers.html">Providers</a></li>
-        <li><a href="token-saver.html">Token Saver</a></li>
-        <li><a href="dashboard.html">Dashboard</a></li>
-        <li><a href="cli.html">CLI</a></li>
-        <li><a href="security.html">Security</a></li>
-        <li><a href="readme.html">Full README</a></li>
-        <li><a href="https://github.com/{{ .Repo }}">Repository</a></li>
-        <li><a href="https://github.com/{{ .Repo }}/releases">Releases</a></li>
-        <li><a href="{{ blob "LICENSE" }}">License: MIT</a></li>
-        <li><a href="tg">Telegram group</a></li>
-        <li><a href="{{ blob "ATTRIBUTION.md" }}">Attribution</a></li>
-      </ul>
-      <p class="attribution">
-        9RouterX &mdash; a Go + Svelte source port by
-        <a href="https://github.com/yanstd888/">yanstd888</a>
-        (<a href="tg">t.me/aiclub_id</a>), continuing
-        <a href="https://github.com/decolua/9router">9Router</a> and
-        <a href="https://github.com/luqman-v1/9router-go">9router-go</a>; the full ownership
-        inventory lives in <a href="{{ blob "ATTRIBUTION.md" }}">ATTRIBUTION.md</a>. Content
-        licensed MIT.
-      </p>
+      <div class="colophon-inner">
+        <div class="colophon-brand">
+          <a class="wordmark" href="index.html">
+            <span class="wordmark-mark" aria-hidden="true"
+              ><img src="logo-9routerx-128.png" alt="9RouterX — Local AI Gateway and Token Saver Logo" width="128" height="128" loading="lazy" decoding="async"
+            /></span>
+            <span>9RouterX</span>
+          </a>
+          <p>Local AI gateway and token saver. One endpoint, 155 providers.</p>
+        </div>
+        <nav class="colophon-columns" aria-label="Footer">
+          <div class="colophon-col">
+            <h3>Product</h3>
+            <ul>
+              <li><a href="providers.html">Providers</a></li>
+              <li><a href="token-saver.html">Token Saver</a></li>
+              <li><a href="dashboard.html">Dashboard</a></li>
+              <li><a href="cli.html">CLI</a></li>
+              <li><a href="installation.html">Installation</a></li>
+            </ul>
+          </div>
+          <div class="colophon-col">
+            <h3>Resources</h3>
+            <ul>
+              <li><a href="security.html">Security</a></li>
+              <li><a href="https://github.com/{{ .Repo }}/releases">Releases</a></li>
+              <li><a href="https://www.npmjs.com/package/9routerx">npm package</a></li>
+              <li><a href="readme.html">Full README</a></li>
+            </ul>
+          </div>
+          <div class="colophon-col">
+            <h3>Community</h3>
+            <ul>
+              <li><a href="tg">Telegram group</a></li>
+              <li><a href="https://github.com/{{ .Repo }}">GitHub repo</a></li>
+              <li><a href="https://github.com/{{ .Repo }}/issues">GitHub Issues</a></li>
+            </ul>
+          </div>
+        </nav>
+        <p class="colophon-legal">
+          &copy; {{ .Year }} 9RouterX. MIT licensed. A Go + Svelte source port continuing
+          <a href="https://github.com/decolua/9router">9Router</a> and
+          <a href="https://github.com/luqman-v1/9router-go">9router-go</a>; the ownership
+          inventory lives in <a href="{{ blob "ATTRIBUTION.md" }}">ATTRIBUTION.md</a>.
+        </p>
+      </div>
+      <!-- The finale: an oversized wordmark cropped by the page edge, with the
+           dashboard's accent glow rising behind it. Decorative only — a screen
+           reader already met the brand in the brand row above. -->
+      <div class="colophon-finale" aria-hidden="true">9RouterX</div>
     </footer>`
 
 // readmeTemplate is the chrome for readme.html — the full README on its own
