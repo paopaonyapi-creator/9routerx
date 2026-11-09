@@ -125,7 +125,11 @@ func dashboardEngineCredential(w http.ResponseWriter, r *http.Request, repo *db.
 		return true
 	}
 	if !allowRead {
-		handlerutil.WriteJSONError(w, http.StatusForbidden, "Operator credentials required")
+		// A named code rather than the status-derived one: 403 means quota
+		// exhaustion elsewhere in this gateway, and telling an operator their
+		// key "ran out of quota" when the real answer is "this route is not
+		// yours" sends them to the wrong fix.
+		handlerutil.WriteJSONErrorCode(w, http.StatusForbidden, "forbidden", "Operator credentials required")
 		return true
 	}
 	return false

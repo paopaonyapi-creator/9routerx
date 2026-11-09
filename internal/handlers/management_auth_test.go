@@ -55,6 +55,11 @@ func TestEngineKeyCannotManageDashboard(t *testing.T) {
 			if rec.Code != http.StatusForbidden {
 				t.Errorf("login=%v %s %s = %d, want 403: %s", login, tc.method, tc.path, rec.Code, rec.Body.String())
 			}
+			// The refusal must not read as a spent quota: 403 carries a named
+			// code here, not the status-derived insufficient_quota.
+			if !strings.Contains(rec.Body.String(), `"code":"forbidden"`) {
+				t.Errorf("login=%v %s %s code = %s, want forbidden", login, tc.method, tc.path, rec.Body.String())
+			}
 		}
 		for _, path := range []string{"/api/providers/catalog", "/api/models/caps?provider=openai"} {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
