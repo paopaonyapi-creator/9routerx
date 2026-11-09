@@ -77,6 +77,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "sitegen:", err)
 		os.Exit(1)
 	}
+	if err := writeLLMFiles(*readmePath, *assetsDir, *wikiDir, *outDir); err != nil {
+		fmt.Fprintln(os.Stderr, "sitegen:", err)
+		os.Exit(1)
+	}
 	if err := writeCrawlFiles(*outDir, time.Now()); err != nil {
 		fmt.Fprintln(os.Stderr, "sitegen:", err)
 		os.Exit(1)

@@ -44,3 +44,43 @@ func TestCrawlFiles(t *testing.T) {
 		t.Fatalf("unexpected robots.txt: %s", robots)
 	}
 }
+
+func TestLLMFiles(t *testing.T) {
+	root := t.TempDir()
+	readme := filepath.Join(root, "README.md")
+	wiki := filepath.Join(root, "wiki")
+	assets := filepath.Join(root, "site")
+	out := filepath.Join(root, "output")
+	writeFixture(t, readme, "<div>\n# Readme\n</div>\n\n```html\n<h1>Keep code</h1>\n```\n")
+	for path, body := range map[string]string{
+		"index.md":   "---\r\ntitle: Wiki Home\r\n---\r\n# Home\r\n",
+		"install.md": "---\ntitle: Install\norder: 2\nsection: Start\n---\n# Install\ninstall body",
+		"api.md":     "---\ntitle: API\norder: 3\nsection: Start\n---\n# API\napi body",
+	} {
+		if err := os.MkdirAll(wiki, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFixture(t, filepath.Join(wiki, path), body)
+	}
+	if err := os.MkdirAll(assets, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, filepath.Join(assets, "llms.txt"), "# Context\n")
+	if err := writeLLMFiles(readme, assets, wiki, out); err != nil {
+		t.Fatal(err)
+	}
+	corpus := readFile(t, filepath.Join(out, "llms-full.txt"))
+	if strings.Contains(corpus, "title: Wiki Home") || strings.Contains(corpus, "<div>") {
+		t.Fatal("corpus contains frontmatter or a prose HTML wrapper")
+	}
+	if !strings.Contains(corpus, "<h1>Keep code</h1>") {
+		t.Fatal("corpus changed a fenced code sample")
+	}
+	if strings.Index(corpus, "# Install") > strings.Index(corpus, "# API") {
+		t.Fatal("corpus does not follow navigation order")
+	}
+	brief := readFile(t, filepath.Join(out, "llms.txt"))
+	if !strings.Contains(brief, "install.html") || !strings.Contains(brief, "api.html") {
+		t.Fatal("documentation map is incomplete")
+	}
+}

@@ -6,7 +6,10 @@ section: Using the Gateway
 
 # Providers
 
-9routerx supports 40+ providers and 100+ models. Every provider is **isolated
+9RouterX supports 155 providers (91 API key, 28 OAuth, 29 free-tier, 4 web cookie)
+and catalogs 248 free models across 36 providers, including 24 cataloged keyless
+models. Antigravity requires one Google OAuth login (free); OpenCode offers
+zero-login access, while Gemini Web needs a browser session cookie. Every provider is **isolated
 and independent** — no provider is merged, cross-aliased, or redirected into
 another.
 
