@@ -86,47 +86,88 @@ describe('api key row menu', () => {
   })
 })
 
-describe('copying a key', () => {
-  // Issue #310. The copy button used to copy whatever the cell displayed, and a
-  // hidden cell displays the mask — so copying straight off a loaded dashboard
-  // put a masked value on the clipboard and the pasted credential 401'd.
+describe('a key whose secret is stored hashed', () => {
+  // Item 5 reversed issue #199: an issued key keeps only an argon2id verifier,
+  // so its secret exists in the create/rotate response and nowhere else. The
+  // row therefore has nothing to reveal or copy, and the controls say so
+  // instead of vanishing — a missing button reads as a broken row.
   //
-  // The assertion is the clipboard text itself rather than a flag or a call:
-  // the user's whole complaint is the bytes that land on the clipboard, and the
-  // second check turns those bytes into the thing the user actually does with
-  // them — authenticate.
-  //
-  // The mask is matched by its bullets rather than by a specific character. It
-  // used to collapse the middle to a single ellipsis, which told the reader the
-  // key's length for free; it now keeps the exact length with bullets, so a test
-  // pinned to "…" would fail on the fix rather than on a regression.
-  test('copies the usable secret while the row is still hidden', async () => {
-    const key = await createKey(page, 'E2E Copy Hidden')
+  // The mask is matched by its bullets rather than by a specific character: the
+  // cell masks whatever the server sent, so the assertion survives a change of
+  // mask style but not the removal of masking.
+  test('offers no copy or reveal, and explains why', async () => {
+    const key = await createKey(page, 'E2E Hash-Only Row')
+    const row = keyRow(page, key)
 
-    // The key must not be revealed: revealing first is the workaround the
-    // reporter found, and it would hide the bug from this test.
-    const displayed = await keyRow(page, key).locator('code').innerText()
+    const displayed = await row.locator('code').innerText()
     expect(displayed).toContain('•')
-    // The mask is the same length as the secret, so the only way to tell them
-    // apart is that one carries bullets and the other does not.
-    expect(displayed).not.toBe(key)
+    expect(displayed.startsWith('sk-')).toBe(true)
 
-    await app.page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
-    await keyRow(page, key).getByRole('button', { name: `Copy key ${key}` }).click()
-    await app.page.waitForTimeout(300)
+    const copy = row.getByRole('button', { name: `Copy key ${key}` })
+    const reveal = row.getByRole('button', { name: `Key ${key} cannot be revealed` })
+    await copy.waitFor()
+    await reveal.waitFor()
+    expect(await copy.isDisabled()).toBe(true)
+    expect(await reveal.isDisabled()).toBe(true)
+    // The reason travels with the control, so a dead button is not a mystery.
+    expect(await reveal.getAttribute('title')).toContain('hashed')
+  })
 
-    const copied = await app.page.evaluate(() => navigator.clipboard.readText())
+  test('shows the secret once, at creation, and it still authenticates', async () => {
+    await page.getByRole('button', { name: 'Create Key' }).click()
+    await page.getByLabel('Key Name').fill('E2E One-Time Secret')
+    await page.getByLabel('Key Name').press('Enter')
 
-    // A mask is unusable as a credential; the secret starts with `sk-`.
-    expect(copied).not.toContain('•')
-    expect(copied).not.toBe(displayed)
-    expect(copied.startsWith('sk-')).toBe(true)
+    const modal = page.locator('.fixed.inset-0').filter({ hasText: 'API Key Created' })
+    const created = modal.locator('input[readonly]').first()
+    await created.waitFor({ timeout: 10_000 })
+    const secret = (await created.inputValue()).trim()
+    expect(secret.startsWith('sk-')).toBe(true)
+    await page.getByRole('button', { name: 'Done' }).click()
 
-    // The end of the user story: the pasted value has to work.
+    // The row must not carry it: what the list gives back is the mask.
+    const shown = await keyRow(page, 'E2E One-Time Secret').locator('code').innerText()
+    expect(shown).not.toBe(secret)
+    expect(shown).toContain('•')
+
+    // The end of the user story: the value copied at creation still works.
     const res = await fetch(`${app.baseURL}/v1/models`, {
-      headers: { Authorization: `Bearer ${copied}` },
+      headers: { Authorization: `Bearer ${secret}` },
     })
     expect(res.status).toBe(200)
+  })
+
+  test('rotating hands back the replacement once and stops there', async () => {
+    const key = await createKey(page, 'E2E Rotate Once')
+
+    page.once('dialog', (d) => d.accept())
+    await openRowMenu(page, key)
+    await page.getByRole('menuitem', { name: 'Regenerate secret' }).click()
+
+    // The table reveals the replacement it just received; that is the only
+    // moment the new secret is readable from the dashboard.
+    let rotated = ''
+    const deadline = Date.now() + 10_000
+    while (Date.now() < deadline) {
+      const text = (await keyRow(page, key).locator('code').innerText()).trim()
+      if (/^sk-[a-f0-9]{32}$/.test(text)) {
+        rotated = text
+        break
+      }
+      await page.waitForTimeout(100)
+    }
+    expect(rotated).not.toBe('')
+
+    // A reload drops the one-time value: the row goes back to its mask.
+    await page.reload()
+    const after = await keyRow(page, key).locator('code').innerText()
+    expect(after).not.toBe(rotated)
+    expect(after).toContain('•')
+
+    const ok = await fetch(`${app.baseURL}/v1/models`, {
+      headers: { Authorization: `Bearer ${rotated}` },
+    })
+    expect(ok.status).toBe(200)
   })
 })
 
