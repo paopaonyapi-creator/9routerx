@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
@@ -73,6 +74,10 @@ func main() {
 	}
 
 	if err := generate(*readmePath, *assetsDir, *outDir, *repo, collectHeroStats(*wikiDir)); err != nil {
+		fmt.Fprintln(os.Stderr, "sitegen:", err)
+		os.Exit(1)
+	}
+	if err := writeCrawlFiles(*outDir, time.Now()); err != nil {
 		fmt.Fprintln(os.Stderr, "sitegen:", err)
 		os.Exit(1)
 	}
