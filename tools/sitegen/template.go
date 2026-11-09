@@ -439,7 +439,7 @@ const pageTemplate = `<!doctype html>
                 <pre><code>docker run -d --name 9routerx --restart unless-stopped \
   -p 20128:20128 -v "$HOME/.9router:/data" \
   -e PORT=20128 -e DATA_DIR=/data \
-  yanstd888/9routerx:latest</code></pre>
+  ghcr.io/yanstd888/9routerx:latest</code></pre>
               </div>
             </li>
             <li class="step">
@@ -462,14 +462,18 @@ const pageTemplate = `<!doctype html>
                 Anything that speaks OpenAI Chat Completions, Claude Messages, Responses, or
                 Ollama-compatible chat. The
                 <a href="client-setup.html">wiki's client setup page</a> has per-tool snippets.
+                Create a local key in Settings &rarr; API Keys &rarr; Create Key first:
+                with 0 keys, requests return <code>401 Authentication required</code>.
               </p>
               <div class="codeblock">
                 <div class="install-head">
                   <span class="install-label">client settings</span>
                 </div>
                 <pre><code>Endpoint: http://localhost:20128/v1
-API Key:  [Settings &rarr; API Keys in the dashboard]
-Model:    kr/claude-sonnet-4.5</code></pre>
+API Key:  [Settings &rarr; API Keys &rarr; Create Key]
+Model:    antigravity/gemini-3.7-flash-medium
+# Antigravity: sign in with Google once (free)
+# Zero-login alternative: oc/big-pickle (OpenCode Free)</code></pre>
               </div>
             </li>
           </ol>

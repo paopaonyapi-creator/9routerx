@@ -27,7 +27,7 @@ Cut tool-output token consumption by **20–40%**, automate multi-tier failover 
 
 > **What is 9RouterX?**
 >
-> **9RouterX** is an open-source, self-hosted AI routing gateway, local LLM proxy, and request/response token optimizer written in Go with an embedded Svelte 5 + Vite + Tailwind 4 web dashboard (listening on default port `20128`). It exposes a unified OpenAI-compatible (`/v1/chat/completions`, `/v1/messages`, `/v1/responses`, `/v1/embeddings`, `/v1/models`) and Anthropic-compatible local proxy endpoint that connects AI coding assistants (Claude Code, Cursor, OpenAI Codex CLI, Cline, Roo Code, OpenCode, Antigravity, Gemini CLI, OpenClaw) to **155 AI providers**—comprising **91 API key services**, **28 one-click OAuth integrations**, **29 free-tier providers** (**248 cataloged free models across 36 providers**, including **24 keyless models** requiring zero external provider setup), and **4 web cookie providers**.
+> **9RouterX** is an open-source, self-hosted AI routing gateway, local LLM proxy, and request/response token optimizer written in Go with an embedded Svelte 5 + Vite + Tailwind 4 web dashboard (listening on default port `20128`). It exposes a unified OpenAI-compatible (`/v1/chat/completions`, `/v1/messages`, `/v1/responses`, `/v1/embeddings`, `/v1/models`) and Anthropic-compatible local proxy endpoint that connects AI coding assistants (Claude Code, Cursor, OpenAI Codex CLI, Cline, Roo Code, OpenCode, Antigravity, Gemini CLI, OpenClaw) to **155 AI providers**—comprising **91 API key services**, **28 one-click OAuth integrations**, **29 free-tier providers** (**248 cataloged free models across 36 providers**, including **24 cataloged keyless models** requiring no user-supplied upstream API key; Antigravity still requires one Google OAuth login), and **4 web cookie providers**.
 
 ## Why 9RouterX?
 
@@ -77,7 +77,7 @@ AI-assisted software engineering workflows suffer from fragmented monthly subscr
 | `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>` **Token Saver Suite** | **20–40% tool-output token savings** (`internal/tokensaver`, `internal/compression`), **RTK Compression**, **50+ ready-made per-tool output filters** (for `git diff`, `grep`, `docker logs`, `npm install`, `terraform plan`, and friends), **GCF/Tabular Headroom** (`internal/compression/gcf`, `internal/headroom`), **Context Squeezer** for long histories, **Output Style Directives** (`Caveman`, `Ponytail`, `ADHD`), **Anti-Slop Injector** (`internal/tokensaver/antislop`), and automated **Tool-Call Repair Fallback**. |
 | `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>` **Governance per Key** | **Daily Cost Ceiling + Hard Cutoff** (`internal/budget`), per-key request rate limits, **IP Whitelist**, per-key custom system prompts, granular endpoint permissions, reusable **Plan Templates** (`internal/policy`, `internal/guardrails`, `internal/keikey`), SSRF dispatch protection, PII masking, encrypted credential storage (`internal/vault`, `internal/sessionvault`), and audit logs (`internal/securitylog`). |
 | `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>` **Providers & Auth** | **155 total providers**: **91 API Key** providers, **28 One-Click OAuth** integrations, **29 Free-Tier** providers, and **4 Web Cookie** providers (`internal/browsercookies`, `internal/browserlogin`). Supports custom OpenAI-/Anthropic-compatible base URLs, custom HTTP headers, Kiro `external_idp` JSON auth import, per-key proxy pools, and Codex quota tracking (`internal/codexquota`). |
-| `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>` **Free Tier & Keyless** | **29 free-tier providers** (23 `CategoryFreeTier` + 6 `CategoryFree`) and **248 free models cataloged across 36 providers**, including **24 keyless models** that require zero upstream API keys (`antigravity`, `opencode`, `blackbox`). Tracks daily, monthly, credit, one-time, and uncapped quota regimes automatically. |
+| `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>` **Free Tier & Keyless** | **29 free-tier providers** (23 `CategoryFreeTier` + 6 `CategoryFree`) and **248 free models cataloged across 36 providers**, including **24 cataloged keyless models** without a user-supplied upstream API key (`antigravity`, `opencode`, `blackbox`); Antigravity requires Google OAuth login once. Tracks daily, monthly, credit, one-time, and uncapped quota regimes automatically. |
 | `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>` **Cache & Performance** | **Semantic Cache** (`internal/semanticcache`) for vector-matched query deduplication, upstream **Prompt Cache** optimization (`internal/promptcache`), and high-throughput **FastJSON** serialization (`internal/fastjson`). |
 | `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>` **Observability** | **Extended Logging + Payload Inspector**, custom usage analytics windows (`12h`, `14d`, custom date ranges), Tremor-inspired data visualizations (`bits-ui` + `layerchart`), distributed **Tracing** (`internal/tracing`, `internal/observ`), **Uptime** monitoring (`internal/uptime`), **Security Log**, multi-target **Webhooks + Notifications** (`internal/notifications`), and **Telegram Bot** alerts (`internal/telegram`). |
 | `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>` **Infra & Extras** | **Single Go Binary** across 5 OS/arch targets, background daemon CLI (`start`/`stop`/`restart`/`status`/`logs`), Docker container (`ghcr.io`), desktop **Tray App**, built-in **Tunnel** (`internal/tunnel`), self-**Updater** (`internal/updater`), encrypted **Sync Bundle** backup/restore (`internal/syncbundle`), **TLS Stealth** (`internal/tlsstealth`), **MITM Traffic Inspection** (`internal/mitm`), **MCP Server** (`internal/mcpserver`), **A2A Protocol** (`internal/a2a`), and **Media TTS/STT**. |
@@ -121,16 +121,16 @@ Download the standalone archive for `linux-x64`, `linux-arm64`, `darwin-x64`, `d
 * **Default Login:** First login uses the default compatibility password `123456`. Change it immediately in **Settings → Profile**.
 * **Gateway Auth Note:** `RequireApiKey` (`internal/middleware/auth.go`) validates client keys against your local SQLite database (`0 keys configured = 401 Authentication required`). Always create at least one gateway API key (`sk-...`) in **Settings → API Keys** before sending requests.
 
-### 3. Send Your First Request (Zero-Config Keyless Model)
+### 3. Send Your First Request (OpenCode, No Upstream Login)
 
-Once you have created your local gateway key (`sk-YOUR-KEY`), test the router immediately using one of the **24 built-in keyless models** (such as `antigravity/gemini-3.7-flash-medium`—no upstream provider API key required):
+Once you have created your local gateway key (`sk-YOUR-KEY`), test with `oc/big-pickle` from OpenCode Free without an upstream login. For `antigravity/gemini-3.7-flash-medium`, sign in with Google through Antigravity once first (free); no user-supplied upstream API key is needed.
 
 ```bash
-curl http://localhost:20128/v1/chat/completions \
+curl http://127.0.0.1:20128/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer sk-YOUR-KEY" \
   -d '{
-    "model": "antigravity/gemini-3.7-flash-medium",
+    "model": "oc/big-pickle",
     "messages": [
       {"role": "user", "content": "Verify 9RouterX local gateway on port 20128 in one sentence."}
     ]
@@ -239,7 +239,7 @@ export OPENAI_API_KEY="sk-YOUR-KEY"
   "apiProvider": "openai-compatible",
   "openAiBaseUrl": "http://127.0.0.1:20128/v1",
   "openAiApiKey": "sk-YOUR-KEY",
-  "openAiModelId": "antigravity/gemini-3.7-flash-medium"
+  "openAiModelId": "oc/big-pickle"
 }
 ```
 
@@ -252,11 +252,11 @@ export GEMINI_API_KEY="sk-YOUR-KEY"
 
 ## Free AI Providers and Keyless Models Catalog
 
-9RouterX includes a built-in catalog of **248 free models across 36 providers** (verified in `freemodels.go`), featuring **24 keyless models** (`antigravity`, `opencode`, `blackbox`) that work out of the box without upstream provider registration or external API keys.
+9RouterX includes a built-in catalog of **248 free models across 36 providers** (verified in `freemodels.go`), featuring **24 cataloged keyless models** (`antigravity`, `opencode`, `blackbox`) without a user-supplied upstream API key. Antigravity requires Google OAuth login once (free); OpenCode offers zero-login access. Gemini Web requires a browser login/session cookie.
 
 ### Supported Free Quota Regimes
 
-* **`keyless`**: Zero upstream provider API key or account signup required (`antigravity`, `opencode`, `blackbox`).
+* **`keyless`**: No user-supplied upstream provider API key (`antigravity`, `opencode`, `blackbox`). Antigravity requires Google OAuth login once; OpenCode and the cataloged Blackbox free endpoint do not require an upstream login.
 * **`recurring-daily`**: Free request or token allowance resets automatically every 24 hours.
 * **`recurring-monthly`**: Free quota refreshes each calendar or billing month.
 * **`recurring-credit`**: Periodic free credit grants replenished by the provider.
@@ -272,7 +272,7 @@ export GEMINI_API_KEY="sk-YOUR-KEY"
 | `vertex` | 21 | — | Google Cloud credits / free tier (`one-time-initial` / `recurring-credit`) |
 | `kilo-gateway` | 12 | — | Free gateway tier (`recurring-daily`) |
 | `fireworks` | 10 | — | Initial / recurring free inference credits (`one-time-initial`) |
-| `antigravity` | 9 | 9 | **Keyless (`keyless` — zero upstream setup, e.g. `gemini-3.7-flash-high/medium/low`)** |
+| `antigravity` | 9 | 9 | **Free after Google OAuth login once; no user-supplied upstream API key (e.g. `gemini-3.7-flash-high/medium/low`)** |
 | `opencode` | 9 | 9 | **Keyless (`keyless` — zero upstream setup)** |
 | `cloudflare-ai` | 9 | — | Recurring daily free Workers AI neurons (`recurring-daily`) |
 | `qoder` | 9 | — | One-click OAuth free coding tier (`recurring-daily` / `recurring-monthly`) |
@@ -370,7 +370,7 @@ Yes. 9RouterX exposes both Anthropic-compatible (`http://localhost:20128`) and O
 <details>
 <summary><strong>2. Is 9RouterX free, and how do the 24 keyless models work?</strong></summary>
 
-Yes. 9RouterX is 100% free and open-source software (MIT License) that runs locally as a single binary with zero proxy markup fees. It ships with **29 free-tier providers** and **248 cataloged free models across 36 providers**—including **24 keyless models** (`antigravity`, `opencode`, `blackbox`, such as `antigravity/gemini-3.7-flash-medium`) that require no external provider API key. You only need to generate a local 9RouterX gateway key (`sk-...`) in the dashboard (`http://localhost:20128`, default password `123456`) to authenticate your local client against `RequireApiKey`.
+Yes. 9RouterX is free and open-source software (MIT License) that runs locally as a single binary with no proxy markup fees. It ships with **29 free-tier providers** and **248 cataloged free models across 36 providers**, including **24 cataloged keyless models** (`antigravity`, `opencode`, `blackbox`) without a user-supplied upstream API key. Antigravity (for example `antigravity/gemini-3.7-flash-medium`) requires a Google OAuth login once, which is free. Use `oc/big-pickle` from OpenCode for a zero-login test. Create a local 9RouterX gateway key in Settings → API Keys → Create Key (`http://localhost:20128`, default password `123456`) before making API requests; 0 keys returns `401 Authentication required`.
 </details>
 
 <details>
