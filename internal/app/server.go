@@ -91,9 +91,10 @@ const (
 // ProvideServer creates *http.Server and registers lifecycle hooks.
 func ProvideServer(p ServerParams) *http.Server {
 	host := strings.TrimSpace(p.Config.Host)
-	if host == "" {
+	switch host {
+	case "":
 		host = "127.0.0.1"
-	} else if host == "*" {
+	case "*":
 		host = "0.0.0.0"
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(p.Config.Port))
