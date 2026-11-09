@@ -161,10 +161,17 @@ func softwareSchema(version string) json.RawMessage {
 	data := map[string]any{
 		"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "9RouterX",
 		"applicationCategory": "DeveloperApplication", "operatingSystem": "Linux, macOS, Windows",
-		"description": "Single-binary Go AI router and token saver across 155 providers and 248 free models in 36 providers (24 cataloged keyless models).",
+		"description": "9RouterX is a single-binary local AI gateway in Go. One endpoint for Claude Code, Codex, Cursor and any OpenAI-compatible CLI: 155 providers, 248 free models, automatic fallback and 20-40% token savings.",
 		"url":         siteBaseURL, "downloadUrl": "https://github.com/yanstd888/9routerx/releases",
 		"author": map[string]any{"@type": "Person", "name": "Muhammad Dian", "url": "https://yanstd888.github.io/"},
 		"offers": map[string]any{"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+		"license": "https://opensource.org/licenses/MIT",
+		"keywords": []string{
+			"ai router", "llm gateway", "local ai gateway", "token saver",
+			"claude code proxy", "codex proxy", "cursor proxy", "opencode",
+			"openai-compatible", "free ai api", "keyless llm", "automatic fallback",
+			"golang", "single binary", "mcp server", "a2a", "semantic cache",
+		},
 	}
 	if version != "" {
 		data["softwareVersion"] = version

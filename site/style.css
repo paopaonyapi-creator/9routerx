@@ -1730,6 +1730,25 @@ h4 {
   white-space: nowrap;
 }
 
+/* ── Desktop (>=1200px): the multi-column layouts stop stretching and lock
+   to their intended column counts; below this the auto-fit grids collapse
+   on their own. ─────────────────────────────────────────────────────────── */
+
+@media (min-width: 1200px) {
+  .catalog-breakdown {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .flow-grid,
+  .community-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .colophon-inner {
+    grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr));
+  }
+}
+
 /* ── Section motion: the hero's language, everywhere ────────────────────────
    One enter (hero-rise, 0.5s, staggered), one ambient loop (hero-aura, 22s),
    one content cycle (mock-chain, ~4s). No new timing functions, no bounce,

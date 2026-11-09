@@ -173,9 +173,29 @@ const pageTemplate = `<!doctype html>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>9RouterX — Local AI gateway &amp; token saver</title>
-    <meta name="description" content="9RouterX routes across 155 AI providers and 248 free models in 36 providers from one Go binary, with an embedded dashboard and token saver." />
-    <link rel="canonical" href="https://yanstd888.github.io/9routerx/index.html" />
+    <meta
+      name="description"
+      content="9RouterX is a single-binary local AI gateway in Go. One endpoint for Claude Code, Codex, Cursor and any OpenAI-compatible CLI: 155 providers, 248 free models, automatic fallback and 20-40% token savings."
+    />
+    <meta
+      name="keywords"
+      content="ai router, llm gateway, local ai gateway, token saver, claude code proxy, codex proxy, cursor proxy, opencode, openai-compatible, free ai api, keyless llm, automatic fallback, golang, single binary, mcp server, a2a, semantic cache"
+    />
+    <link rel="canonical" href="https://yanstd888.github.io/9routerx/" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <meta property="og:title" content="9RouterX — Local AI Gateway and Token Saver" />
+    <meta
+      property="og:description"
+      content="9RouterX is a single-binary local AI gateway in Go. One endpoint for Claude Code, Codex, Cursor and any OpenAI-compatible CLI: 155 providers, 248 free models, automatic fallback and 20-40% token savings."
+    />
+    <meta property="og:url" content="https://yanstd888.github.io/9routerx/" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="9RouterX — Local AI Gateway and Token Saver" />
+    <meta
+      name="twitter:description"
+      content="9RouterX is a single-binary local AI gateway in Go. One endpoint for Claude Code, Codex, Cursor and any OpenAI-compatible CLI: 155 providers, 248 free models, automatic fallback and 20-40% token savings."
+    />
     <link rel="alternate" type="text/plain" title="LLM documentation map" href="llms.txt" />
     <link rel="alternate" type="text/plain" title="Full LLM documentation" href="llms-full.txt" />
     <!-- The dashboard's glyph pairing (web/src/index.css): Manrope for display
@@ -311,8 +331,8 @@ const pageTemplate = `<!doctype html>
           <p class="hero-eyebrow">Local AI gateway &middot; single binary &middot; Go + Svelte</p>
           <h1 id="hero-title">9RouterX — One Endpoint. Every AI Model. Tokens Saved Automatically.</h1>
           <p class="hero-sub">
-            9RouterX is a local AI gateway and LLM router in <strong>one Go binary</strong>. Point
-            Claude Code, Codex, Cursor, or any OpenAI- or Claude-compatible CLI at one endpoint and
+            9RouterX is a local LLM gateway and AI router in <strong>one Go binary</strong>. Point
+            Claude Code, Codex, Cursor, or any OpenAI-compatible CLI at one endpoint and
             get automatic fallback across subscription, cheap and free tiers &mdash; with a
             token-saver suite that cuts tool-output tokens by 20&ndash;40% and the management
             dashboard embedded.
@@ -481,7 +501,7 @@ const pageTemplate = `<!doctype html>
             <article class="catalog-card">
               <span class="catalog-num">29</span>
               <span class="catalog-label">Free-tier</span>
-              <p>OpenCode Free &middot; BluesMinds &middot; Chutes AI</p>
+              <p>OpenCode Free &middot; BluesMinds &middot; Chutes AI &mdash; a free AI API path for side projects and CI</p>
             </article>
             <article class="catalog-card">
               <span class="catalog-num">4</span>
@@ -491,7 +511,7 @@ const pageTemplate = `<!doctype html>
             <article class="catalog-card catalog-card-keyless">
               <span class="catalog-num">24</span>
               <span class="catalog-label">Keyless models</span>
-              <p>opencode &amp; gemini-web zero-login; antigravity needs a one-time Google login.</p>
+              <p>Keyless LLM requests: opencode &amp; gemini-web zero-login; antigravity needs a one-time Google login.</p>
             </article>
           </div>
           <div class="codeblock catalog-endpoint">
@@ -571,8 +591,8 @@ const pageTemplate = `<!doctype html>
               <h3>One endpoint, multi-protocol</h3>
               <p>
                 OpenAI Chat Completions, Claude Messages, Gemini and the Responses API on
-                <code>/v1</code> &mdash; Claude Code, Codex, Cursor, Cline and Copilot all point at
-                the same port.
+                <code>/v1</code> &mdash; the Claude Code proxy, the Codex proxy and the Cursor proxy
+                are that one endpoint, with Cline and Copilot along for the ride.
               </p>
               <div class="flow-mock" aria-hidden="true">
                 <code>POST /v1/chat/completions</code>
@@ -584,8 +604,8 @@ const pageTemplate = `<!doctype html>
               <h3>Ops &amp; performance</h3>
               <p>
                 Semantic cache and prompt cache, logging with a payload inspector, tracing, uptime,
-                security log, webhooks and a Telegram bot &mdash; A2A + MCP server, one Go binary
-                with tray, tunnel and Docker.
+                security log, webhooks and a Telegram bot &mdash; A2A + MCP server, one
+                Golang binary with tray, tunnel and Docker.
               </p>
               <div class="flow-mock mock-ops" aria-hidden="true">
                 <span class="mock-chip">cache hit</span>
