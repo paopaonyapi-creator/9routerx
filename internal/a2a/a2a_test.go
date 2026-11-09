@@ -55,6 +55,12 @@ func postRPCHeader(s *Server, body string, header func(*http.Request)) *httptest
 	return rec
 }
 
+func postRPCAuthorized(s *Server, body string) *httptest.ResponseRecorder {
+	return postRPCHeader(s, body, func(r *http.Request) {
+		r.Header.Set("Authorization", "Bearer audit-test-a2a-token")
+	})
+}
+
 func TestAgentCardShape(t *testing.T) {
 	s := newTestServer(t, setupA2ATestRepo(t), "")
 
@@ -157,8 +163,7 @@ func TestDisabledMode(t *testing.T) {
 	})
 }
 
-// TestAuth covers bearer auth when a token is configured and the bypass when
-// none is.
+// TestAuth covers configured bearer auth and enabled fail-closed behavior.
 func TestAuth(t *testing.T) {
 	repo := setupA2ATestRepo(t)
 	SetEnabled(true)
@@ -175,7 +180,8 @@ func TestAuth(t *testing.T) {
 		{"bearer accepted", "tok-1", func(r *http.Request) { r.Header.Set("Authorization", "Bearer tok-1") }, http.StatusOK},
 		{"bearer scheme case-insensitive", "tok-1", func(r *http.Request) { r.Header.Set("Authorization", "bearer tok-1") }, http.StatusOK},
 		{"x-a2a-token accepted", "tok-1", func(r *http.Request) { r.Header.Set("X-A2A-Token", "tok-1") }, http.StatusOK},
-		{"no token configured bypasses", "", nil, http.StatusOK},
+		{"no configured token refused", "", nil, http.StatusUnauthorized},
+		{"unconfigured token refuses bearer", "", func(r *http.Request) { r.Header.Set("Authorization", "Bearer audit-test-a2a-token") }, http.StatusUnauthorized},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -185,7 +191,37 @@ func TestAuth(t *testing.T) {
 			if rec.Code != tt.wantCode {
 				t.Fatalf("status = %d, want %d: %s", rec.Code, tt.wantCode, rec.Body.String())
 			}
+			if tt.token == "" && !strings.Contains(rec.Body.String(), "A2A token not configured") {
+				t.Fatal("missing unconfigured-token diagnostic")
+			}
 		})
+	}
+}
+
+func TestEnabledWithoutTokenRequiresAuth(t *testing.T) {
+	s := newTestServer(t, setupA2ATestRepo(t), "")
+	SetEnabled(true)
+	rec := httptest.NewRecorder()
+	s.ServeStatus(rec, httptest.NewRequest(http.MethodGet, "/api/a2a/status", nil))
+	var status map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status["authRequired"] != true {
+		t.Fatal("enabled A2A must not advertise unauthenticated access")
+	}
+	for _, header := range []func(*http.Request){
+		nil,
+		func(r *http.Request) { r.Header.Set("Authorization", "Bearer audit-test-presented") },
+		func(r *http.Request) { r.Header.Set("X-A2A-Token", "audit-test-presented") },
+	} {
+		rec := postRPCHeader(s, `{"jsonrpc":"2.0","id":1,"method":"tasks/list","params":{}}`, header)
+		if rec.Code != http.StatusUnauthorized || rec.Header().Get("WWW-Authenticate") != "Bearer" {
+			t.Fatalf("unconfigured token response = %d, want Bearer 401", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "A2A token not configured") {
+			t.Fatal("missing token configuration error")
+		}
 	}
 }
 
@@ -196,11 +232,11 @@ func TestMessageSendListKeys(t *testing.T) {
 	if err := repo.CreateApiKey("k-a2a", "sk-a2a-secret-value", "a2a test key", ""); err != nil {
 		t.Fatalf("CreateApiKey: %v", err)
 	}
-	s := newTestServer(t, repo, "")
+	s := newTestServer(t, repo, "audit-test-a2a-token")
 	SetEnabled(true)
 
 	body := `{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"skill":"list-keys","messages":[{"role":"user","content":"list keys"}]}}`
-	rec := postRPC(s, body)
+	rec := postRPCAuthorized(s, body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
 	}
@@ -244,11 +280,11 @@ func TestMessageStreamSSE(t *testing.T) {
 	if err := repo.CreateApiKey("k-a2a", "sk-a2a-secret-value", "a2a test key", ""); err != nil {
 		t.Fatalf("CreateApiKey: %v", err)
 	}
-	s := newTestServer(t, repo, "")
+	s := newTestServer(t, repo, "audit-test-a2a-token")
 	SetEnabled(true)
 
 	body := `{"jsonrpc":"2.0","id":7,"method":"message/stream","params":{"skill":"list-keys","messages":[{"role":"user","content":"list keys"}]}}`
-	rec := postRPC(s, body)
+	rec := postRPCAuthorized(s, body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
 	}
@@ -277,11 +313,11 @@ func TestMessageStreamSSE(t *testing.T) {
 
 func TestTasksLifecycle(t *testing.T) {
 	repo := setupA2ATestRepo(t)
-	s := newTestServer(t, repo, "")
+	s := newTestServer(t, repo, "audit-test-a2a-token")
 	SetEnabled(true)
 
 	send := `{"jsonrpc":"2.0","id":1,"method":"message/send","params":{"skill":"health-check","messages":[{"role":"user","content":"hi"}]}}`
-	rec := postRPC(s, send)
+	rec := postRPCAuthorized(s, send)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("send status = %d: %s", rec.Code, rec.Body.String())
 	}
@@ -312,7 +348,7 @@ func TestTasksLifecycle(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body := fmt.Sprintf(`{"jsonrpc":"2.0","id":2,"method":%q,"params":%s}`, tt.method, tt.params)
-			rec := postRPC(s, body)
+			rec := postRPCAuthorized(s, body)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
 			}
@@ -349,10 +385,10 @@ func TestTasksLifecycle(t *testing.T) {
 }
 
 func TestUnknownMethod(t *testing.T) {
-	s := newTestServer(t, setupA2ATestRepo(t), "")
+	s := newTestServer(t, setupA2ATestRepo(t), "audit-test-a2a-token")
 	SetEnabled(true)
 
-	rec := postRPC(s, `{"jsonrpc":"2.0","id":1,"method":"bogus","params":{}}`)
+	rec := postRPCAuthorized(s, `{"jsonrpc":"2.0","id":1,"method":"bogus","params":{}}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}

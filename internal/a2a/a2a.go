@@ -15,9 +15,8 @@
 // it is off the JSON-RPC methods refuse with HTTP 503 and error code -32000
 // while GET /api/a2a/status reports {status: "disabled", online: false}.
 //
-// Auth is a bearer token from ROUTERX_A2A_TOKEN compared constant-time, with
-// the reference doc's bypass semantics: a deployment that configures no token
-// requires none, and a wrong token is refused with 401.
+// Auth is a bearer token from ROUTERX_A2A_TOKEN compared constant-time.
+// Enabled servers without a configured token fail closed with 401.
 package a2a
 
 import (
@@ -128,8 +127,8 @@ type Server struct {
 }
 
 // NewServer builds an A2A server over the given repo. The auth token is read
-// once from ROUTERX_A2A_TOKEN; an empty token means every request is allowed
-// (see package doc). The task sweeper starts here and stops on Close.
+// once from ROUTERX_A2A_TOKEN; an empty token refuses enabled requests.
+// The task sweeper starts here and stops on Close.
 func NewServer(repo *db.Repo) *Server {
 	return &Server{
 		repo:  repo,
@@ -187,7 +186,7 @@ func (s *Server) ServeStatus(w http.ResponseWriter, r *http.Request) {
 		"version":        agentVersion(),
 		"protocol":       protocolVersion,
 		"endpoint":       "/api/a2a",
-		"authRequired":   s.token != "",
+		"authRequired":   online || s.token != "",
 		"skills":         skillIDs(),
 		"taskTTLMinutes": int(DefaultTaskTTL / time.Minute),
 		"tasks":          s.tasks.Count(),
@@ -204,7 +203,11 @@ func (s *Server) ServeJSONRPC(w http.ResponseWriter, r *http.Request) {
 	}
 	if !s.authorized(r) {
 		w.Header().Set("WWW-Authenticate", "Bearer")
-		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "Unauthorized"})
+		message := "Unauthorized"
+		if s.token == "" {
+			message = "A2A token not configured"
+		}
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": message})
 		return
 	}
 	if !Enabled() {
@@ -261,14 +264,12 @@ func (s *Server) ServeJSONRPC(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// authorized reports whether the request carries the configured token. A
-// server with no token configured allows everything — the reference doc's
-// bypass semantics, so turning A2A on without minting a token still yields a
-// working surface. The compare is constant-time so a wrong token cannot be
-// walked in byte by byte through response timing.
+// authorized preserves disabled-mode responses when no token is configured;
+// an enabled server must always have a configured token. Configured tokens
+// are compared constant-time.
 func (s *Server) authorized(r *http.Request) bool {
 	if s.token == "" {
-		return true
+		return !Enabled()
 	}
 	return subtle.ConstantTimeCompare([]byte(requestToken(r)), []byte(s.token)) == 1
 }

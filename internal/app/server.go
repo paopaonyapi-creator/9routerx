@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"go.uber.org/fx"
@@ -19,6 +20,7 @@ import (
 	"9routerx/proxy/internal/db"
 	"9routerx/proxy/internal/freeresilience"
 	"9routerx/proxy/internal/handlers/chat"
+	appLog "9routerx/proxy/internal/log"
 	"9routerx/proxy/internal/mcpserver"
 	"9routerx/proxy/internal/notifications"
 	"9routerx/proxy/internal/providers"
@@ -172,6 +174,9 @@ func ProvideServer(p ServerParams) *http.Server {
 			// and the stealth lane keeps its plain client until
 			// ROUTERX_TLS_STEALTH.
 			a2a.SetEnabled(p.Config.EnableA2A)
+			if p.Config.EnableA2A && strings.TrimSpace(os.Getenv("ROUTERX_A2A_TOKEN")) == "" {
+				appLog.Warn("a2a", "A2A token not configured; enabled requests are refused")
+			}
 			tlsstealth.SetEnabled(p.Config.EnableTLSStealth)
 			if p.Config.EnableTLSStealth {
 				// The daily compliance alert is not optional while the
