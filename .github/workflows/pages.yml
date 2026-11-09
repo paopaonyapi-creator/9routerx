@@ -196,12 +196,13 @@ jobs:
             exit 1
           }
           # Every wiki page must carry the same four sidebar section headings.
-          # index.html is the README page and has no sidebar; tg.html is a
-          # redirect stub. The count excludes the stylesheet's own selector —
-          # grep the rendered markup only, so the one CSS definition does not
-          # inflate the count and hide a sidebar whose headings were lost.
+          # index.html is the landing and readme.html the standalone README —
+          # neither has a wiki sidebar; tg.html is a redirect stub. The count
+          # excludes the stylesheet's own selector — grep the rendered markup
+          # only, so the one CSS definition does not inflate the count and hide
+          # a sidebar whose headings were lost.
           for page in _site/*.html; do
-            case "$(basename "$page")" in tg.html|index.html) continue ;; esac
+            case "$(basename "$page")" in tg.html|index.html|readme.html) continue ;; esac
             markup=$(sed '/<style>/,/<\/style>/d' "$page")
             headings=$(printf '%s' "$markup" | grep -o 'class="wiki-group-title"' | wc -l)
             [ "$headings" -eq 4 ] || {
