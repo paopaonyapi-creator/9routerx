@@ -685,8 +685,18 @@ const pageTemplate = `<!doctype html>
                 Ollama-compatible chat. The
                 <a href="client-setup.html">wiki's client setup page</a> has per-tool snippets.
                 Create a local key in Settings &rarr; API Keys &rarr; Create Key first:
-                with 0 keys, requests return <code>401 Authentication required</code>.
+                with 0 keys, requests return <code>401 Authentication required</code>. The default
+                dashboard password is <code>123456</code> &mdash; change it in Settings &rarr;
+                Profile.
               </p>
+              <div class="codeblock">
+                <div class="install-head">
+                  <span class="install-label">curl &mdash; one request through the gateway</span>
+                </div>
+                <pre><code>curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer $9ROUTERX_API_KEY" \
+  -d '{"model":"auto","messages":[{"role":"user","content":"Hello"}]}'</code></pre>
+              </div>
               <div class="codeblock">
                 <div class="install-head">
                   <span class="install-label">client settings</span>
