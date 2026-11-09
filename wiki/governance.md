@@ -45,7 +45,8 @@ one abusive caller must not spend a healthy node's budget.
 
 ## Budgets
 
-USD and token budgets with a period and a hard cutoff:
+USD and token budgets with a period and a hard cutoff, checked when a request
+starts:
 
 | Field | Meaning |
 |---|---|
@@ -53,11 +54,12 @@ USD and token budgets with a period and a hard cutoff:
 | `limitTokens` | Token cap |
 | `period` | `daily`, `weekly`, `monthly`, or `total` |
 | `alertPct` | Percentage that raises a warning header |
-| `hardCutoff` | `1` = reject with `402` once the limit is reached; `0` = warn only |
+| `hardCutoff` | `1` = reject with `402` once the limit is reached (checked at request start); `0` = warn only |
 
 Money is stored as integer micros; the float→micros conversion happens in **one**
-helper so it is never mixed into a guard. In-flight requests are reserved, so N
-parallel requests cannot all slip under the limit.
+helper so it is never mixed into a guard. The ceiling is checked when a request starts, not continuously: requests
+already in flight when it is crossed still complete, so a key can overshoot by
+their cost. That is the trade for not writing a reservation on every request.
 
 ## Plans
 
@@ -120,8 +122,9 @@ all configured from the key's row on the **API Keys** page:
 | Expiry | The key stops working at its expiry timestamp |
 
 The daily cost limit is separate from the period budget above: the budget is a
-planned ceiling with alerts and an optional hard cutoff; the daily cost limit is
-a hard per-day cap that resets itself every UTC midnight.
+planned ceiling with alerts and an optional hard cutoff, both checked when a
+request starts; the daily cost limit is a hard per-day cap that resets itself
+every UTC midnight and is judged the same way.
 
 ## API key lifecycle
 

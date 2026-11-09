@@ -416,7 +416,8 @@
 
       <label class="flex items-center gap-2 text-sm text-text-main">
         <input type="checkbox" bind:checked={formHardCutoff} class="rounded" />
-        Hard cutoff — refuse requests once the budget is exhausted
+        Hard cutoff — refuse requests once the budget is exhausted (checked when a request starts;
+        one already in flight may overshoot slightly)
       </label>
 
       <label class="flex flex-col gap-1">

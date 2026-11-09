@@ -234,7 +234,7 @@ configuring them one at a time.
 | Tokens | Token cap for the period |
 | Period | When the budget resets — see below |
 | Alert % | Percentage that raises a warning before the cap is hit |
-| Hard cutoff | On = reject with `402` once the cap is reached. Off = warn only |
+| Hard cutoff | On = reject with `402` once the cap is reached (checked when a request starts, so a request already in flight can overshoot slightly). Off = warn only |
 | Allowed models | Which models keys on this plan may use. Leave empty for all |
 
 4. Save.
@@ -287,5 +287,8 @@ remove their ceiling. Detach the keys first, then delete the plan.
 The port plan for this feature says it is incomplete — missing periods, alert
 thresholds, and the spending cutoff. That is out of date. All three exist, and a
 key past its budget with hard cutoff on is rejected with `402 budget_exhausted`.
+The ceiling is checked when a request starts rather than continuously, so
+requests already in flight when it is crossed still complete and the key can
+overshoot by their cost.
 
 **Full guide:** [Governance](governance.html)
