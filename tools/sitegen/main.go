@@ -1,15 +1,18 @@
 // 9RouterX — derived from the work of https://github.com/yanstd888/ — port and modifications by the maintainers — https://t.me/aiclub_id
-// Command sitegen renders the project page published at
+// Command sitegen renders the project site published at
 // https://yanstd888.github.io/9routerx.
 //
-// The homepage is the README, not a second copy of it: a landing page written
-// separately drifts from the README within a release, and every fix then has to
-// be made twice. So the build reads README.md, renders it, and wraps it in the
-// small amount of chrome a hosted page needs (a header with the links a visitor
-// actually wants, a footer, a stylesheet).
+// The homepage is a pure-design landing page. It used to embed the README —
+// one source could never drift — but the landing grew into the product's front
+// door and the README grew into a document of its own, and stitching the two
+// together meant every landing redesign dragged the whole README along. So the
+// landing now carries its own sections (whose claims, commands and FAQ answers
+// still come from README.md and the wiki, never invented), and the README
+// renders complete at readme.html, in the same chrome. One repository, two
+// pages, one source of truth for the words.
 //
-// Next to the README it renders the wiki/ directory into the same site, so a
-// visitor reads one thing and not two. Each wiki page keeps the relative link
+// Next to them it renders the wiki/ directory into the same site, so a visitor
+// reads one thing and not two. Each wiki page keeps the relative link
 // treatment the README gets: repository-relative links become github.com blob
 // URLs, and the wiki's own page links stay relative so they resolve inside the
 // site.
@@ -61,12 +64,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// The wiki renders BEFORE the README so the README homepage wins
-	// index.html. Both write that name — wiki/index.md renders with the slug
-	// "index" — and the Pages workflow's contract is that the project page is
-	// the README ("the README becomes index.html", see TestGenerate and the
-	// pages.yml entry-point assert). Generating in the other order let the
-	// wiki home silently replace the README as the site's homepage.
+	// The wiki renders BEFORE the README so the landing wins index.html. Both
+	// used to write that name — wiki/index.md renders with the slug "index" —
+	// and the Pages workflow's contract is that the project page is the site's
+	// own front door ("the README becomes index.html", see TestGenerate and
+	// the pages.yml entry-point assert). Generating in the other order let the
+	// wiki home silently replace it as the site's homepage. wiki/index.md is
+	// still unpublished (see generateWiki): its entry-point role moved to the
+	// landing and readme.html.
 	if info, err := os.Stat(*wikiDir); err == nil && info.IsDir() {
 		if err := generateWiki(*wikiDir, *outDir, *repo); err != nil {
 			fmt.Fprintln(os.Stderr, "sitegen:", err)
@@ -137,8 +142,19 @@ func generate(readmePath, assetsDir, outDir, repo string, stats heroStats) error
 	if err != nil {
 		return fmt.Errorf("render page: %w", err)
 	}
+	if err := writeFile(filepath.Join(outDir, "index.html"), page); err != nil {
+		return err
+	}
 
-	return writeFile(filepath.Join(outDir, "index.html"), page)
+	// The README keeps its own page in the same chrome, its H1 intact — the
+	// page belongs to it. Body passes through unescaped because it is this
+	// repository's own README: the same file GitHub renders for everyone
+	// reading the repo.
+	article, err := renderReadmePage(body, repo)
+	if err != nil {
+		return fmt.Errorf("render readme page: %w", err)
+	}
+	return writeFile(filepath.Join(outDir, "readme.html"), article)
 }
 
 func renderMarkdown(readmePath, outDir, repo string) ([]byte, error) {
@@ -276,15 +292,10 @@ func isAsset(dest []byte) bool {
 	return false
 }
 
-func renderPage(body []byte, repo string, stats heroStats) ([]byte, error) {
-	// The hero owns the page H1; only the first embedded README title is demoted.
-	if start := bytes.Index(body, []byte("<h1")); start >= 0 {
-		if end := bytes.Index(body[start:], []byte("</h1>")); end >= 0 {
-			body = bytes.Clone(body)
-			body[start+2] = '2'
-			body[start+end+3] = '2'
-		}
-	}
+// renderPage renders the homepage. readmeBody is not embedded — the landing is
+// pure design — but the README's own FAQ section still feeds the page's
+// FAQ JSON-LD, so the schema and the visible FAQ section stay one source.
+func renderPage(readmeBody []byte, repo string, stats heroStats) ([]byte, error) {
 	tmpl, err := template.New("page").Funcs(template.FuncMap{
 		"blob": func(p string) string {
 			return fmt.Sprintf("https://github.com/%s/blob/main/%s", repo, p)
@@ -296,15 +307,39 @@ func renderPage(body []byte, repo string, stats heroStats) ([]byte, error) {
 
 	var buf bytes.Buffer
 	data := struct {
-		Body     template.HTML
 		Repo     string
 		Stats    heroStats
 		Software json.RawMessage
 		FAQ      json.RawMessage
-	}{Body: template.HTML(body), Repo: repo, Stats: stats, Software: softwareSchema(stats.Version), FAQ: faqSchema(string(body))}
+	}{Repo: repo, Stats: stats, Software: softwareSchema(stats.Version), FAQ: faqSchema(string(readmeBody))}
 
 	if err := tmpl.Execute(&buf, data); err != nil {
 		return nil, fmt.Errorf("execute template: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// renderReadmePage renders readme.html: the README article in the shared
+// chrome. The README's first H1 stays an H1 — the page belongs to it, and the
+// landing no longer embeds the body, so there is no second H1 to collide with.
+func renderReadmePage(body []byte, repo string) ([]byte, error) {
+	tmpl, err := template.New("readme").Funcs(template.FuncMap{
+		"blob": func(p string) string {
+			return fmt.Sprintf("https://github.com/%s/blob/main/%s", repo, p)
+		},
+	}).Parse(readmeTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("parse readme template: %w", err)
+	}
+
+	var buf bytes.Buffer
+	data := struct {
+		Body template.HTML
+		Repo string
+	}{Body: template.HTML(body), Repo: repo}
+
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return nil, fmt.Errorf("execute readme template: %w", err)
 	}
 	return buf.Bytes(), nil
 }

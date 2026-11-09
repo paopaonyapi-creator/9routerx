@@ -167,6 +167,7 @@ func TestGenerate(t *testing.T) {
 
 	for _, rel := range []string{
 		"index.html",
+		"readme.html",
 		"style.css",
 		"tg.html",
 		"tg/index.html",
@@ -181,14 +182,29 @@ func TestGenerate(t *testing.T) {
 
 	page := readFile(t, filepath.Join(out, "index.html"))
 
+	// The homepage is pure design: no embedded README, and three doors to
+	// readme.html — the nav, the footer and the pre-footer CTA line.
+	if strings.Contains(page, `<article id="readme"`) {
+		t.Error("index.html still embeds the README; the landing is pure design now")
+	}
+	if strings.Contains(page, `href="https://github.com/yanstd888/9routerx/blob/main/docs/DATABASE.md"`) {
+		t.Error("index.html carries README body content")
+	}
+	if got := strings.Count(page, `href="readme.html"`); got < 3 {
+		t.Errorf("index.html links to readme.html %d time(s), want the nav, footer and CTA doors (>= 3)", got)
+	}
+
+	// The README renders complete on its own page — links rewritten, icons
+	// injected, its own H1 kept.
+	article := readFile(t, filepath.Join(out, "readme.html"))
 	for _, want := range []string{
 		`href="https://github.com/yanstd888/9routerx/blob/main/docs/DATABASE.md"`,
 		`src="docs/screenshots/providers.png"`,
 		`src="https://img.shields.io/badge/build-passing-green"`,
-		`<h2 id="title">Title</h2>`,
+		`<h1 id="title">Title</h1>`,
 	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("index.html is missing %q", want)
+		if !strings.Contains(article, want) {
+			t.Errorf("readme.html is missing %q", want)
 		}
 	}
 
@@ -198,15 +214,15 @@ func TestGenerate(t *testing.T) {
 	// (the attribution line), and those are supposed to stay absolute. The
 	// closing tag search starts after bodyStart: the hero's feature cards
 	// are <article> elements too, and Index would otherwise find theirs.
-	bodyStart := strings.Index(page, `<article id="readme"`)
+	bodyStart := strings.Index(article, `<article class="prose readme-article"`)
 	if bodyStart < 0 {
-		t.Fatal("index.html has no README article to check")
+		t.Fatal("readme.html has no README article to check")
 	}
-	bodyEnd := bodyStart + strings.Index(page[bodyStart:], "</article>")
+	bodyEnd := bodyStart + strings.Index(article[bodyStart:], "</article>")
 	if bodyEnd <= bodyStart {
 		t.Fatal("the README article is never closed")
 	}
-	if strings.Contains(page[bodyStart:bodyEnd], "https://github.com/decolua") {
+	if strings.Contains(article[bodyStart:bodyEnd], "https://github.com/decolua") {
 		t.Error("absolute link was rewritten")
 	}
 

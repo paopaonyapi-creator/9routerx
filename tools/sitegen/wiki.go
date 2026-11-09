@@ -65,10 +65,11 @@ func generateWiki(wikiDir, outDir, repo string) error {
 	pages := make([]*page, 0, len(entries))
 	for _, entry := range entries {
 		// wiki/index.md is not published: its slug would render as index.html,
-		// the name the README homepage owns (see the ordering comment in
+		// the name the landing homepage owns (see the ordering comment in
 		// main.go). The entry-point role that page used to play — install,
-		// client setup, API — is the README's job now, so publishing both
-		// would ship two competing homes and let the wiki one win by accident.
+		// client setup, API — is the landing's job now, with the full README
+		// at readme.html; publishing both would ship two competing homes and
+		// let the wiki one win by accident.
 		if strings.EqualFold(filepath.Base(entry), "index.md") {
 			continue
 		}

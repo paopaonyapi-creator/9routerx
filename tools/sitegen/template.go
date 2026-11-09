@@ -134,10 +134,10 @@ func countWikiPages(wikiDir string) int {
 	return count
 }
 
-// pageTemplate is the whole chrome around the rendered README: a masthead with
-// the real brand mark, the hero + landing sections the homepage exists for,
-// the full README (the Pages contract: the project page is the README), and a
-// footer pointing back at the repository.
+// pageTemplate is the whole homepage: a masthead with the real brand mark, the
+// landing sections the homepage exists for, and the shared footer. It is pure
+// design — the README no longer embeds here — so every section carries its own
+// content and the full README renders at readme.html instead.
 //
 // The landing copy is this repository's own — feature names, commands and FAQ
 // answers come from README.md and the wiki, never invented here.
@@ -243,6 +243,7 @@ const pageTemplate = `<!doctype html>
                wiki page carries the full sidebar, so it doubles as the table
                of contents. -->
           <a href="installation.html">Wiki</a>
+          <a href="readme.html">README</a>
           <a href="https://github.com/{{ .Repo }}">Repository</a>
           <a href="https://github.com/{{ .Repo }}/releases">Releases</a>
           <a href="tg">Telegram group</a>
@@ -522,47 +523,13 @@ Model:    antigravity/gemini-3.7-flash-medium
         </section>
       </div>
 
-      <!-- The Pages contract: the README is the homepage. The hero and the
-           landing sections are chrome ABOVE it; the README itself renders
-           complete, exactly as GitHub renders it for the repository. -->
-      <div class="readme-head">
-        <p class="landing-kicker">Full README</p>
-        <p>
-          Rendered from <a href="{{ blob "README.md" }}">README.md</a> on every push to
-          <code>main</code>
-        </p>
-      </div>
-
-      <!-- Rendered from README.md by tools/sitegen, so the two can never disagree.
-           The HTML passes through unescaped because it is this repository's own
-           README: the same file GitHub renders for everyone reading the repo. -->
-      <article id="readme" class="prose">{{ .Body }}</article>
+      <!-- One line to the full README, which now lives at readme.html. The
+           styled install CTA lands with the footer polish; this keeps the
+           door reachable from the landing until then. -->
+      <p class="readme-cta">Prefer the full README? <a href="readme.html">Open it here</a>.</p>
     </main>
 
-    <footer class="colophon">
-      <ul class="colophon-links">
-        <li><a href="installation.html">Wiki</a></li>
-        <li><a href="providers.html">Providers</a></li>
-        <li><a href="token-saver.html">Token Saver</a></li>
-        <li><a href="dashboard.html">Dashboard</a></li>
-        <li><a href="cli.html">CLI</a></li>
-        <li><a href="security.html">Security</a></li>
-        <li><a href="https://github.com/{{ .Repo }}">Repository</a></li>
-        <li><a href="https://github.com/{{ .Repo }}/releases">Releases</a></li>
-        <li><a href="{{ blob "LICENSE" }}">License: MIT</a></li>
-        <li><a href="tg">Telegram group</a></li>
-        <li><a href="{{ blob "ATTRIBUTION.md" }}">Attribution</a></li>
-      </ul>
-      <p class="attribution">
-        9RouterX &mdash; a Go + Svelte source port by
-        <a href="https://github.com/yanstd888/">yanstd888</a>
-        (<a href="tg">t.me/aiclub_id</a>), continuing
-        <a href="https://github.com/decolua/9router">9Router</a> and
-        <a href="https://github.com/luqman-v1/9router-go">9router-go</a>; the full ownership
-        inventory lives in <a href="{{ blob "ATTRIBUTION.md" }}">ATTRIBUTION.md</a>. Content
-        licensed MIT.
-      </p>
-    </footer>
+` + colophon + `
 
     <script>
       // Hero behaviour: headline decode, install-command typing, copy button.
@@ -671,6 +638,129 @@ Model:    antigravity/gemini-3.7-flash-medium
         }
       })();
     </script>
+  </body>
+</html>
+`
+
+// colophon is the footer both published pages share — the homepage and
+// readme.html — kept in exactly one place so the two cannot drift. It is
+// spliced into both templates as a Go constant expression, and both execute it
+// with .Repo and the blob helper in scope.
+const colophon = `    <footer class="colophon">
+      <ul class="colophon-links">
+        <li><a href="installation.html">Wiki</a></li>
+        <li><a href="providers.html">Providers</a></li>
+        <li><a href="token-saver.html">Token Saver</a></li>
+        <li><a href="dashboard.html">Dashboard</a></li>
+        <li><a href="cli.html">CLI</a></li>
+        <li><a href="security.html">Security</a></li>
+        <li><a href="readme.html">Full README</a></li>
+        <li><a href="https://github.com/{{ .Repo }}">Repository</a></li>
+        <li><a href="https://github.com/{{ .Repo }}/releases">Releases</a></li>
+        <li><a href="{{ blob "LICENSE" }}">License: MIT</a></li>
+        <li><a href="tg">Telegram group</a></li>
+        <li><a href="{{ blob "ATTRIBUTION.md" }}">Attribution</a></li>
+      </ul>
+      <p class="attribution">
+        9RouterX &mdash; a Go + Svelte source port by
+        <a href="https://github.com/yanstd888/">yanstd888</a>
+        (<a href="tg">t.me/aiclub_id</a>), continuing
+        <a href="https://github.com/decolua/9router">9Router</a> and
+        <a href="https://github.com/luqman-v1/9router-go">9router-go</a>; the full ownership
+        inventory lives in <a href="{{ blob "ATTRIBUTION.md" }}">ATTRIBUTION.md</a>. Content
+        licensed MIT.
+      </p>
+    </footer>`
+
+// readmeTemplate is the chrome for readme.html — the full README on its own
+// page now that the homepage is pure design. Same masthead, footer and
+// stylesheet as the homepage so the two read as one site; the article gets the
+// same .prose treatment the wiki pages have, without the sidebar: the README is
+// one document, not a section of docs. The README's own H1 stays an H1 here —
+// the page belongs to it — and the theme boot script matches the wiki's so a
+// choice made anywhere holds everywhere.
+var readmeTemplate = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>README — 9RouterX</title>
+    <meta name="description" content="The full 9RouterX README: features, quickstart, provider catalog and FAQ for the single-binary local AI gateway." />
+    <link rel="canonical" href="https://yanstd888.github.io/9routerx/readme.html" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <link rel="alternate" type="text/plain" title="LLM documentation map" href="llms.txt" />
+    <link rel="alternate" type="text/plain" title="Full LLM documentation" href="llms-full.txt" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&family=Manrope:wght@200..800&display=swap"
+    />
+    <link rel="stylesheet" href="style.css" />` + `
+    <link rel="icon" href="favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/png" href="favicon-32x32.png" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <meta property="og:image" content="` + ogImageURL + `" />
+    <style>
+      /* Article width for the standalone README. The .prose typography and the
+         table scroll wrappers come from style.css; this only frames them. */
+      .readme-article {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 2.5rem 1.25rem 4rem;
+      }
+      @media (min-width: 768px) {
+        .readme-article {
+          padding: 3.5rem 2rem 5rem;
+        }
+      }
+    </style>
+    <script>
+      // Apply the stored theme before the first paint — the same snippet the
+      // wiki pages run, reading the same key the dashboard writes.
+      (function () {
+        try {
+          var stored = localStorage.getItem("9router-theme");
+          if (stored !== "light" && stored !== "dark") return;
+          var root = document.documentElement;
+          root.classList.toggle("dark", stored === "dark");
+          root.classList.toggle("light", stored === "light");
+        } catch (e) {
+          // Storage unavailable: the media query stands as the theme.
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="masthead">
+      <div class="masthead-inner">
+        <a class="wordmark" href="index.html">
+          <span class="wordmark-mark" aria-hidden="true"
+            ><img src="logo-9routerx-128.png" alt="9RouterX — Local AI Gateway and Token Saver Logo" width="128" height="128" loading="lazy" decoding="async"
+          /></span>
+          <span>9RouterX</span>
+        </a>
+        <nav aria-label="Project">
+          <a href="index.html">Home</a>
+          <a href="installation.html">Wiki</a>
+          <a href="https://github.com/{{ .Repo }}">Repository</a>
+          <a href="https://github.com/{{ .Repo }}/releases">Releases</a>
+          <a href="tg">Telegram group</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- The full README, rendered from README.md by tools/sitegen on every
+           push to main. The HTML passes through unescaped because it is this
+           repository's own README: the same file GitHub renders for everyone
+           reading the repo. -->
+      <article class="prose readme-article">{{ .Body }}</article>
+    </main>
+
+` + colophon + `
   </body>
 </html>
 `
