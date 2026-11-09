@@ -240,11 +240,14 @@ a:hover {
 
 /* ── Masthead ─────────────────────────────────────────────────────────────── */
 
-/* Flat bar with a hairline, the dashboard's own top-bar weight. */
+/* Sticky glass bar with a hairline, the dashboard's own top-bar weight. */
 .masthead {
   position: sticky;
   top: 0;
-  background: var(--bg);
+  z-index: 40;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
 }
 
@@ -257,6 +260,140 @@ a:hover {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem 1.5rem;
+}
+
+/* The hamburger. Three lines that fold into an X when the menu is open;
+   hidden on desktop where the whole nav fits on one row. */
+.menu-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.menu-line {
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  fill: none;
+  transition: transform var(--ease) 0.25s, opacity var(--ease) 0.25s;
+  transform-origin: 12px 12px;
+}
+
+[aria-expanded="true"] .menu-line-1 {
+  transform: translateY(6px) rotate(45deg);
+}
+
+[aria-expanded="true"] .menu-line-2 {
+  opacity: 0;
+}
+
+[aria-expanded="true"] .menu-line-3 {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1.15rem;
+  font-size: 0.9375rem;
+}
+
+.site-nav > a {
+  color: var(--text-muted);
+  text-decoration: none;
+  /* 44px tall target without a 44px tall bar. */
+  padding: 0.6rem 0;
+  display: inline-block;
+}
+
+.site-nav > a:hover {
+  color: var(--link);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+
+.site-nav-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.35rem;
+}
+
+.site-nav-actions .nav-github {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+@media (max-width: 768px) {
+  /* The panel: full-width glass sheet under the bar. Without JS (no html.js
+     class) it never hides — a no-JS reader gets the open menu and loses
+     nothing. With JS it starts closed and the toggle drives it. */
+  .menu-toggle {
+    display: inline-flex;
+  }
+
+  .site-nav {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0.75rem 1.25rem 1.25rem;
+    background: var(--glass);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  html.js .site-nav:not(.open) {
+    display: none;
+  }
+
+  html:not(.js) .site-nav {
+    display: flex;
+  }
+
+  html.js .site-nav.open {
+    display: flex;
+  }
+
+  .site-nav > a {
+    padding: 0.85rem 0.25rem;
+    font-size: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .site-nav > a:last-of-type {
+    border-bottom: 0;
+  }
+
+  .site-nav-actions {
+    flex-direction: column;
+    align-items: stretch;
+    margin: 0.75rem 0 0;
+  }
+
+  .site-nav-actions .btn {
+    justify-content: center;
+    min-height: 44px;
+  }
+
+  body.menu-open {
+    overflow: hidden;
+  }
 }
 
 .wordmark {
@@ -296,34 +433,9 @@ a:hover {
   display: block;
 }
 
-.masthead nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 1.15rem;
-  font-size: 0.9375rem;
-}
-
-.masthead nav a {
-  color: var(--text-muted);
-  text-decoration: none;
-  /* 44px tall target without a 44px tall bar. */
-  padding: 0.6rem 0;
-  display: inline-block;
-}
-
-.masthead nav a:hover {
-  color: var(--link);
-  text-decoration: underline;
-  text-decoration-thickness: 2px;
-}
-
 @media (max-width: 40rem) {
   .masthead-inner {
     gap: 0.5rem;
-  }
-  .masthead nav {
-    gap: 0.65rem;
-    font-size: 0.875rem;
   }
 }
 

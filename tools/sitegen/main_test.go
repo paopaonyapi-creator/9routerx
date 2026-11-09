@@ -353,16 +353,41 @@ func TestPageTemplateChrome(t *testing.T) {
 		t.Error("the masthead still carries the colored-letter plate instead of the logo")
 	}
 
-	wikiAt := strings.Index(pageTemplate, `href="installation.html">Wiki</a>`)
-	repoAt := strings.Index(pageTemplate, `>Repository</a>`)
-	if wikiAt < 0 {
-		t.Fatal("the nav has no Wiki link; the 20-page wiki has no door from the homepage")
+	// The navbar: section anchors (each backed by a real id on the page),
+	// then the Wiki and README doors, then the GitHub and Install actions.
+	// The anchors are verified against the built page in the S7 checks; here
+	// the template contract is the order and the menu chrome.
+	navOrder := []string{
+		`href="#features-title"`,
+		`href="#catalog"`,
+		`href="#flow"`,
+		`href="#quickstart-title"`,
+		`href="#faq-title"`,
+		`href="installation.html">Wiki</a>`,
+		`href="readme.html">README</a>`,
 	}
-	if repoAt < 0 {
-		t.Fatal("the nav has no Repository link")
+	last := -1
+	for _, want := range navOrder {
+		at := strings.Index(pageTemplate, want)
+		if at < 0 {
+			t.Fatalf("the nav is missing %q", want)
+		}
+		if at < last {
+			t.Errorf("the nav entry %q is out of order", want)
+		}
+		last = at
 	}
-	if wikiAt > repoAt {
-		t.Error("the Wiki link is not before Repository in the nav")
+	for _, want := range []string{
+		`id="menu-toggle"`,
+		`aria-expanded="false"`,
+		`aria-controls="site-menu"`,
+		`id="site-menu"`,
+		`nav-github`,
+		`nav-install`,
+	} {
+		if !strings.Contains(pageTemplate, want) {
+			t.Errorf("the navbar is missing %q", want)
+		}
 	}
 
 	// The footer's wiki row is a shortcut into the documentation, so every

@@ -255,19 +255,37 @@ const pageTemplate = `<!doctype html>
           /></span>
           <span>9RouterX</span>
         </a>
-        <nav aria-label="Project">
-          <!-- The wiki is 20 pages of documentation and this page is the only
-               door to it, so it leads the nav. It points at installation.html
-               rather than a wiki index: wiki/index.md is unpublished (its slug
-               would collide with this page's index.html), and Installation is
-               the first published page in the wiki's own sidebar order — every
-               wiki page carries the full sidebar, so it doubles as the table
-               of contents. -->
+        <button
+          class="menu-toggle"
+          id="menu-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="site-menu"
+          aria-label="Open menu"
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+            <path class="menu-line menu-line-1" d="M3 6h18" />
+            <path class="menu-line menu-line-2" d="M3 12h18" />
+            <path class="menu-line menu-line-3" d="M3 18h18" />
+          </svg>
+        </button>
+        <nav class="site-nav" id="site-menu" aria-label="Project">
+          <!-- The section anchors are ids this page really renders (grep the
+               built index.html); Wiki and README are the two other pages. -->
+          <a href="#features-title">Features</a>
+          <a href="#catalog">Providers</a>
+          <a href="#flow">Token Saver</a>
+          <a href="#quickstart-title">Quickstart</a>
+          <a href="#faq-title">FAQ</a>
           <a href="installation.html">Wiki</a>
           <a href="readme.html">README</a>
-          <a href="https://github.com/{{ .Repo }}">Repository</a>
-          <a href="https://github.com/{{ .Repo }}/releases">Releases</a>
-          <a href="tg">Telegram group</a>
+          <span class="site-nav-actions">
+            <a class="btn btn-ghost nav-github" href="https://github.com/{{ .Repo }}">
+              <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+              Star
+            </a>
+            <a class="btn btn-primary nav-install" href="#quickstart-title">Install</a>
+          </span>
         </nav>
       </div>
     </header>
@@ -824,6 +842,37 @@ Model:    antigravity/gemini-3.7-flash-medium
       // prefers-reduced-motion.
       (function () {
         var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        // 0) Mobile menu. The toggle only exists because the panel is closed
+        //    by default under JS; without JS the panel renders open (the
+        //    html.js gate in the stylesheet keeps a no-JS reader one scroll
+        //    away from every link). Escape closes, a link click closes, and
+        //    resizing past the breakpoint closes.
+        var root = document.documentElement;
+        root.classList.add("js");
+        var toggle = document.getElementById("menu-toggle");
+        var menu = document.getElementById("site-menu");
+        var setMenu = function (open) {
+          if (!toggle || !menu) return;
+          root.classList.toggle("menu-open", open);
+          menu.classList.toggle("open", open);
+          toggle.setAttribute("aria-expanded", open ? "true" : "false");
+          toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+        };
+        if (toggle && menu) {
+          toggle.addEventListener("click", function () {
+            setMenu(!menu.classList.contains("open"));
+          });
+          menu.addEventListener("click", function (e) {
+            if (e.target instanceof Element && e.target.closest("a")) setMenu(false);
+          });
+          document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape") setMenu(false);
+          });
+          window.addEventListener("resize", function () {
+            if (window.innerWidth > 768) setMenu(false);
+          });
+        }
 
         // 1) Headline text-scramble / decode. Same glyph set, same <=500ms
         //    window and same timer-based settle net as the dashboard's
