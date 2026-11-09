@@ -1028,6 +1028,108 @@ a:hover {
   color: var(--text-subtle);
 }
 
+/* ── Catalog: the provider grid and its per-auth breakdown ─────────────────
+   The connectable count reuses the hero's dynamic stat (never a hardcoded
+   figure), the chips are a static sample of real registry names, and the
+   breakdown cards carry the per-auth facts. Chips never marquee: they sit
+   still and answer hover with opacity only. */
+
+.catalog-count {
+  margin: 1.5rem 0 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.75rem;
+  font-family: var(--font-mono);
+}
+
+.catalog-count-num {
+  font-size: clamp(3rem, 7vw, 4.5rem);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+}
+
+.catalog-count-label {
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  color: var(--text-muted);
+}
+
+.catalog-chips {
+  margin: 1.5rem auto 0;
+  padding: 0;
+  max-width: 64rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  list-style: none;
+}
+
+.catalog-chips li {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text);
+  padding: 0.42rem 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  transition: opacity var(--ease) 0.2s;
+}
+
+.catalog-chips li:hover {
+  opacity: 0.72;
+}
+
+.catalog-breakdown {
+  margin: 2.25rem auto 0;
+  max-width: 64rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.9rem;
+}
+
+.catalog-card {
+  padding: 1.1rem 1.2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.catalog-num {
+  font-family: var(--font-mono);
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--brand);
+}
+
+.catalog-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.catalog-card p {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-subtle);
+}
+
+.catalog-card-keyless p {
+  color: var(--text-muted);
+}
+
+.catalog-endpoint {
+  margin: 2.25rem auto 0;
+  max-width: 34rem;
+}
+
 /* ── Prose (README + wiki article bodies) ────────────────────────────────── */
 
 .prose {

@@ -397,6 +397,93 @@ const pageTemplate = `<!doctype html>
       <!-- Landing sections. Every claim, command and answer below is
            README/wiki text, condensed but not invented. -->
       <div class="landing">
+        <!-- The catalog: what "155 providers" is made of, with the connectable
+             count the build computed (the same number the hero strip shows —
+             never a hardcoded figure) and the per-auth breakdown. -->
+        <section id="catalog" aria-labelledby="catalog-title">
+          <p class="landing-kicker">The catalog</p>
+          <h2 id="catalog-title">All behind one endpoint.</h2>
+          <p class="landing-lede">
+            Chat, media, search, local runtimes, cloud agents &mdash; one catalog, one endpoint,
+            one dashboard for every credential.
+          </p>
+          <p class="catalog-count">
+            <span class="catalog-count-num">{{ .Stats.Providers }}</span>
+            <span class="catalog-count-label">providers</span>
+          </p>
+          <!-- A sample, not the catalog: every name below is a real entry in
+               internal/providers/provider_registry.go. -->
+          <ul class="catalog-chips" aria-label="A sample of the provider catalog">
+            <li>OpenAI</li>
+            <li>Anthropic</li>
+            <li>Gemini</li>
+            <li>DeepSeek</li>
+            <li>xAI (Grok)</li>
+            <li>Mistral</li>
+            <li>Groq</li>
+            <li>Cerebras</li>
+            <li>NVIDIA NIM</li>
+            <li>OpenRouter</li>
+            <li>Together AI</li>
+            <li>Fireworks AI</li>
+            <li>HuggingFace</li>
+            <li>SiliconFlow</li>
+            <li>Azure OpenAI</li>
+            <li>AWS Bedrock</li>
+            <li>Vertex AI</li>
+            <li>Kimi</li>
+            <li>ZCode (Z.ai)</li>
+            <li>MiniMax Code</li>
+            <li>trae</li>
+            <li>windsurf</li>
+            <li>Zed</li>
+            <li>Cursor IDE</li>
+            <li>Cline</li>
+            <li>OpenAI Codex</li>
+            <li>OpenCode Free</li>
+            <li>Antigravity</li>
+            <li>Gemini Web</li>
+            <li>DeepSeek Web</li>
+            <li>GitHub Copilot</li>
+            <li>Ollama Local</li>
+            <li>Local Device</li>
+            <li>ComfyUI</li>
+          </ul>
+          <div class="catalog-breakdown">
+            <article class="catalog-card">
+              <span class="catalog-num">91</span>
+              <span class="catalog-label">API key</span>
+              <p>OpenAI &middot; Anthropic &middot; Groq</p>
+            </article>
+            <article class="catalog-card">
+              <span class="catalog-num">28</span>
+              <span class="catalog-label">One-click OAuth</span>
+              <p>trae &middot; windsurf &middot; Zed</p>
+            </article>
+            <article class="catalog-card">
+              <span class="catalog-num">29</span>
+              <span class="catalog-label">Free-tier</span>
+              <p>OpenCode Free &middot; BluesMinds &middot; Chutes AI</p>
+            </article>
+            <article class="catalog-card">
+              <span class="catalog-num">4</span>
+              <span class="catalog-label">Web cookie</span>
+              <p>Gemini Web &middot; DeepSeek Web &middot; Perplexity Web (Pro/Max)</p>
+            </article>
+            <article class="catalog-card catalog-card-keyless">
+              <span class="catalog-num">24</span>
+              <span class="catalog-label">Keyless models</span>
+              <p>opencode &amp; gemini-web zero-login; antigravity needs a one-time Google login.</p>
+            </article>
+          </div>
+          <div class="codeblock catalog-endpoint">
+            <div class="install-head">
+              <span class="install-label">The one endpoint every client points at</span>
+            </div>
+            <pre><code>http://localhost:20128/v1</code></pre>
+          </div>
+        </section>
+
         <section aria-labelledby="features-title">
           <p class="landing-kicker">What you get</p>
           <h2 id="features-title">Four systems between your CLI and the bill</h2>
