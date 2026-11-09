@@ -971,6 +971,7 @@ func mergeMapField(target map[string]any, key string, source map[string]any) {
 // (which the dashboard gate admits) is refused: one leaked client key must not
 // be able to dump every provider credential.
 func (h *DashboardHandler) HandleExportProviderKeys(w http.ResponseWriter, r *http.Request) {
+	protectKeyReveal(w)
 	if !middleware.CallerIsDashboardPrivileged(h.Repo, r) {
 		handlerutil.WriteJSONError(w, http.StatusUnauthorized, "Unauthorized: dashboard session or CLI token required")
 		return
@@ -1021,6 +1022,9 @@ func (h *DashboardHandler) HandleExportProviderKeys(w http.ResponseWriter, r *ht
 			name = c.ID
 		}
 
+		if key != "" {
+			logKeyReveal(r, "provider_connection", c.ID)
+		}
 		exported = append(exported, exportedKey{
 			ID:       c.ID,
 			Name:     name,

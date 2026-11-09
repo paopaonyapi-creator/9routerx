@@ -26,6 +26,7 @@ import (
 // credential handed to Cursor or Claude Code — still gets the masked value, so
 // one leaked key cannot dump the whole key set.
 func (h *DashboardHandler) HandleGetApiKeys(w http.ResponseWriter, r *http.Request) {
+	protectKeyReveal(w)
 	keys, err := h.Repo.GetApiKeys()
 	if err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
@@ -85,6 +86,10 @@ func (h *DashboardHandler) HandleGetApiKeys(w http.ResponseWriter, r *http.Reque
 			// has to answer.
 			access = accessFromPatterns(unionModelPatterns(allowlists[k.ID], plans[k.ID].AllowedModels))
 		}
+		secret := apiKeySecretFor(k, privileged)
+		if secret != "" {
+			logKeyReveal(r, "client_key", k.ID)
+		}
 		sanitized = append(sanitized, map[string]any{
 			// The Node dashboard reads access{restricted,allow}; Go's own
 			// clients read the columns above. `access` is the EFFECTIVE policy
@@ -92,7 +97,7 @@ func (h *DashboardHandler) HandleGetApiKeys(w http.ResponseWriter, r *http.Reque
 			// the gate enforces and what an operator reading the list means by
 			// "what may this key call".
 			"access": access,
-			"id":     k.ID, "key": apiKeySecretFor(k, privileged), "keyDisplay": apiKeyDisplay(k), "name": k.Name,
+			"id":     k.ID, "key": secret, "keyDisplay": apiKeyDisplay(k), "name": k.Name,
 			"machineId": k.MachineID, "isActive": k.IsActive, "createdAt": k.CreatedAt,
 			// The governance columns belong in the list, not only behind a
 			// per-key fetch: the dashboard has to tell a constrained key from
