@@ -91,10 +91,10 @@ func NewFromEnv() *Vault {
 	key, err := masterKeyFromEnv(MasterKeyEnv)
 	if err != nil {
 		if errors.Is(err, errNoMasterKey) {
-			log.Warn("vault", "no master key configured; provider credentials stay in plaintext",
+			log.Warn("vault", "no master key configured; provider credentials and browser sessions stay in plaintext — set ROUTER_MASTER_KEY to seal them",
 				"env", MasterKeyEnv)
 		} else {
-			log.Warn("vault", "master key unusable; provider credentials stay in plaintext",
+			log.Warn("vault", "master key unusable; provider credentials and browser sessions stay in plaintext — set ROUTER_MASTER_KEY to seal them",
 				"env", MasterKeyEnv, "error", err)
 		}
 		return NewDisabled()

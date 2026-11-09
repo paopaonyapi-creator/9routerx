@@ -46,6 +46,7 @@
   import TerminalView from './components/TerminalView.svelte'
   import TokenSaverView from './components/TokenSaverView.svelte'
   import TlsStealthBanner from './components/TlsStealthBanner.svelte'
+  import CredentialVaultBanner from './components/CredentialVaultBanner.svelte'
   import JailbreakView from './components/JailbreakView.svelte'
   import TopBar from './components/TopBar.svelte'
   import CommandPalette from './components/CommandPalette.svelte'
@@ -589,6 +590,13 @@
            flag is on; renders nothing otherwise. -->
       <div class="px-6 lg:px-10 pt-4">
         <TlsStealthBanner />
+      </div>
+
+      <!-- Credential-vault state: without ROUTER_MASTER_KEY, provider
+           credentials and browser sessions sit in the database unencrypted.
+           Renders nothing while the vault is enabled or the read fails. -->
+      <div class="px-6 lg:px-10 pt-4">
+        <CredentialVaultBanner />
       </div>
 
       <!-- TASK updater-A: the "new version available" banner. One check per
