@@ -380,6 +380,82 @@ a:hover {
   }
 }
 
+/* Layer 3: the glyph field. Three oversized mono glyphs drifting behind the
+   hero copy — the login screen's ambient layer in homepage form. Same motion
+   language as the aura: transform + opacity only, 22-30s periods, token
+   colours at a whisper, under prefers-reduced-motion everything freezes. */
+.hero-glyphs {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.hero-glyphs span {
+  position: absolute;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: clamp(5rem, 13vw, 11rem);
+  line-height: 1;
+  color: color-mix(in srgb, var(--brand) 9%, transparent);
+  white-space: nowrap;
+  will-change: transform, opacity;
+}
+
+.hero-glyphs span:nth-child(1) {
+  top: 8%;
+  left: -2%;
+  animation: hero-glyph 26s var(--ease) infinite alternate;
+}
+
+.hero-glyphs span:nth-child(2) {
+  top: 42%;
+  right: 4%;
+  font-size: clamp(4rem, 10vw, 8rem);
+  color: color-mix(in srgb, var(--orange) 8%, transparent);
+  animation: hero-glyph 30s var(--ease) 2s infinite alternate-reverse;
+}
+
+.hero-glyphs span:nth-child(3) {
+  bottom: -12%;
+  left: 30%;
+  font-size: clamp(3.5rem, 9vw, 7rem);
+  animation: hero-glyph 22s var(--ease) 1s infinite alternate;
+}
+
+@keyframes hero-glyph {
+  from {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.5;
+  }
+  to {
+    transform: translate3d(2.5%, -3%, 0);
+    opacity: 1;
+  }
+}
+
+/* The two installer facts: license and shape. Chip-shaped like the hero
+   chips, but quieter — they answer a question, they do not advertise. */
+.hero-badges {
+  margin: -0.4rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  animation: hero-rise 0.5s var(--ease) 0.25s both;
+}
+
+.hero-badge {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--glass);
+}
+
 .hero-inner {
   position: relative;
   z-index: 1;
@@ -1170,10 +1246,12 @@ h4 {
 
 @media (prefers-reduced-motion: reduce) {
   .hero::after,
+  .hero-glyphs span,
   .hero-eyebrow,
   .hero h1,
   .hero-sub,
   .hero-install,
+  .hero-badges,
   .hero-stats,
   .hero-shot,
   .hero-chips li {

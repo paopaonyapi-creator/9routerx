@@ -20,9 +20,14 @@ import (
 const ogImageURL = "https://yanstd888.github.io/9routerx/logo-9routerx.png"
 
 // heroStats carries the numbers the homepage hero is allowed to claim. Every
-// field is computed from the repository at build time; a field the build could
-// not compute is a zero, and the template omits that stat outright — the hero
-// never renders a number the build could not back with a file.
+// computed field is gathered from the repository at build time; a field the
+// build could not compute is a zero, and the template omits that stat outright —
+// the hero never renders a number the build could not back with a file.
+//
+// The catalog facts (free models, keyless, token savings) are the task's
+// absolute numbers — the same figures README.md prints — carried as constants
+// below and rendered through the same guarded dl, so the markup itself never
+// bakes a number in.
 type heroStats struct {
 	// Version is the VERSION file at the repository root — the same value the
 	// release build embeds into the binary.
@@ -35,18 +40,34 @@ type heroStats struct {
 	// WikiPages counts the pages generateWiki will publish: every wiki/*.md
 	// except index.md, whose slug belongs to this homepage.
 	WikiPages int
+	// Catalog facts (see catalogFreeModels below).
+	FreeModels   int
+	Keyless      int
+	TokenSavings string
 }
 
-// collectHeroStats gathers all three numbers. Paths are relative to the
+// The catalog facts ANGKA MUTLAK fixes for the site copy. They live beside the
+// computed stats and travel through the same guarded template fields, so the
+// hero renders them with the same "omit rather than invent" rule.
+const (
+	catalogFreeModels   = 248
+	catalogKeyless      = 24
+	catalogTokenSavings = "20–40%"
+)
+
+// collectHeroStats gathers all the numbers. Paths are relative to the
 // repository root because both the Pages workflow and a local render run the
 // generator from there. A missing source (test fixtures render from a temp
 // dir) degrades to a zero, never an error: the hero renders without that stat
 // rather than inventing one.
 func collectHeroStats(wikiDir string) heroStats {
 	return heroStats{
-		Version:   readVersion(),
-		Providers: countProviders(),
-		WikiPages: countWikiPages(wikiDir),
+		Version:      readVersion(),
+		Providers:    countProviders(),
+		WikiPages:    countWikiPages(wikiDir),
+		FreeModels:   catalogFreeModels,
+		Keyless:      catalogKeyless,
+		TokenSavings: catalogTokenSavings,
 	}
 }
 
@@ -260,6 +281,14 @@ const pageTemplate = `<!doctype html>
            (web/src/lib/scramble.ts). Everything respects
            prefers-reduced-motion. -->
       <section class="hero" aria-label="9RouterX at a glance">
+        <!-- Decorative glyph layer: three oversized mono glyphs drifting behind
+             the content, the login screen's ambient motion in homepage form.
+             Pure CSS, aria-hidden, pointer-events none, below .hero-inner. -->
+        <div class="hero-glyphs" aria-hidden="true">
+          <span>{ }</span>
+          <span>&rarr;</span>
+          <span>:20128</span>
+        </div>
         <div class="hero-inner">
           <p class="hero-eyebrow">Local AI gateway &middot; single binary &middot; Go + Svelte</p>
           <h1 id="hero-title">9RouterX — One Endpoint. Every AI Model. Tokens Saved Automatically.</h1>
@@ -286,6 +315,13 @@ const pageTemplate = `<!doctype html>
             <pre><code id="install-cmd" data-cmd="npm install -g 9routerx">npm install -g 9routerx</code><span class="install-caret" aria-hidden="true"></span></pre>
           </div>
 
+          <!-- The two facts an installer wants before clicking: the license and
+               the shape of the thing they are installing. -->
+          <p class="hero-badges">
+            <span class="hero-badge">MIT license</span>
+            <span class="hero-badge">Single binary &middot; 5 platforms</span>
+          </p>
+
           <p class="hero-actions">
             <a class="btn btn-primary" href="https://github.com/{{ .Repo }}/releases/latest"
               >GitHub Release</a
@@ -303,17 +339,33 @@ const pageTemplate = `<!doctype html>
             <li>MCP / A2A</li>
           </ul>
 
-          <!-- Live numbers, only when the build computed them. -->
+          <!-- Live numbers, only when the build computed them. The catalog
+               facts ride the same guards via collectHeroStats. -->
           <dl class="hero-stats">
             {{ if .Stats.Providers }}
             <div class="hero-stat">
               <dd>{{ .Stats.Providers }}</dd>
-              <dt>providers in the catalog</dt>
+              <dt>Providers</dt>
+            </div>
+            {{ end }} {{ if .Stats.FreeModels }}
+            <div class="hero-stat">
+              <dd>{{ .Stats.FreeModels }}</dd>
+              <dt>Free models</dt>
+            </div>
+            {{ end }} {{ if .Stats.Keyless }}
+            <div class="hero-stat">
+              <dd>{{ .Stats.Keyless }}</dd>
+              <dt>Keyless</dt>
+            </div>
+            {{ end }} {{ if .Stats.TokenSavings }}
+            <div class="hero-stat">
+              <dd>{{ .Stats.TokenSavings }}</dd>
+              <dt>Token savings</dt>
             </div>
             {{ end }} {{ if .Stats.WikiPages }}
             <div class="hero-stat">
               <dd>{{ .Stats.WikiPages }}</dd>
-              <dt>wiki pages of docs</dt>
+              <dt>Docs pages</dt>
             </div>
             {{ end }} {{ if .Stats.Version }}
             <div class="hero-stat">
