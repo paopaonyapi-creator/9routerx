@@ -203,7 +203,9 @@ type stubUsage struct {
 	err    error
 }
 
-func (s stubUsage) GetApiKeyTokenUsage(string) (int, error) { return s.tokens, s.err }
+func (s stubUsage) GetApiKeyTokenUsageByID(context.Context, string) (int, error) {
+	return s.tokens, s.err
+}
 
 // TestTokenQuotaRefusesExhaustedKey proves the lifetime budget refuses with 403
 // once the key's cumulative usage reaches the quota.
@@ -305,11 +307,14 @@ func TestTokenQuotaUnsetSkipsRead(t *testing.T) {
 	}
 }
 
-type countingUsage struct{ calls int }
+type countingUsage struct {
+	calls  int
+	tokens int
+}
 
-func (c *countingUsage) GetApiKeyTokenUsage(string) (int, error) {
+func (c *countingUsage) GetApiKeyTokenUsageByID(context.Context, string) (int, error) {
 	c.calls++
-	return 0, nil
+	return c.tokens, nil
 }
 
 // TestLimitsForResolvesQuotaAndQueue proves the key's own columns are what the

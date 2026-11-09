@@ -668,7 +668,7 @@ func (h *DashboardHandler) exportDatabase(ctx context.Context) (*databaseExport,
 	}
 
 	if out.APIKeys, err = selectRows(tx,
-		`SELECT id, key, name, machineId, isActive, createdAt,
+		`SELECT id, key, keyHash, lookupHash, keyDisplay, name, machineId, isActive, createdAt,
 		        rateLimitRPM, rateLimitTPM, rateLimitConcurrency, tokenQuota, queueTimeoutMs,
 		        limitMicros, limitTokens, budgetPeriod, alertPct, hardCutoff
 		   FROM apiKeys`); err != nil {
@@ -886,11 +886,19 @@ func (h *DashboardHandler) importDatabase(ctx context.Context, payload map[strin
 			continue
 		}
 		if _, err := tx.Exec(
-			`INSERT OR REPLACE INTO apiKeys(id, key, name, machineId, isActive, createdAt,
+			`INSERT OR REPLACE INTO apiKeys(id, key, keyHash, lookupHash, keyDisplay, name, machineId, isActive, createdAt,
 			        rateLimitRPM, rateLimitTPM, rateLimitConcurrency, tokenQuota, queueTimeoutMs,
 			        limitMicros, limitTokens, budgetPeriod, alertPct, hardCutoff)
-			 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			k["id"], k["key"], stringDefault(k["name"], nil), stringDefault(k["machineId"], nil),
+			 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			k["id"], k["key"],
+			// The verifier and its index travel with the row: a restore that
+			// kept only the sentinel `key` would bring back a key that can no
+			// longer authenticate and can never be revealed. A payload written
+			// before these columns existed carries none, which restores the row
+			// exactly as such a database had it.
+			stringDefault(k["keyHash"], ""), stringDefault(k["lookupHash"], ""),
+			stringDefault(k["keyDisplay"], ""),
+			stringDefault(k["name"], nil), stringDefault(k["machineId"], nil),
 			boolToInt(k["isActive"]), stringDefault(k["createdAt"], nowISO()),
 			// A restored key must come back with the limits it had: a backup
 			// that silently lifted every rate limit and token quota would turn

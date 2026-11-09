@@ -10,6 +10,7 @@ import (
 
 	"9routerx/proxy/internal/db"
 	"9routerx/proxy/internal/dbtest"
+	"9routerx/proxy/internal/handlerutil"
 	"9routerx/proxy/internal/keikey"
 )
 
@@ -109,6 +110,45 @@ func TestRequireApiKey_HashedKey(t *testing.T) {
 	code, _ = authRequest(t, repo, "sk-hashed-secret-abcdef123457")
 	if code != http.StatusUnauthorized {
 		t.Fatalf("wrong plaintext for a hashed row returned %d, want 401", code)
+	}
+}
+
+// TestRequireApiKey_IssuedHashOnlyKeyAndRotation is the item-5 issuance path:
+// the key is created hash-only (no plaintext ever written), authenticates, and
+// stops authenticating the moment it is rotated.
+func TestRequireApiKey_IssuedHashOnlyKeyAndRotation(t *testing.T) {
+	repo, _, cleanup := newHashTestRepo(t)
+	defer cleanup()
+
+	const secret = "sk-issued-hash-only-abcdef123456"
+	verifier, err := keikey.Hash(secret)
+	if err != nil {
+		t.Fatalf("Hash: %v", err)
+	}
+	if err := repo.CreateHashedApiKey("i1", verifier, keikey.LookupHash(secret), handlerutil.MaskAPIKey(secret), "n", "m"); err != nil {
+		t.Fatalf("CreateHashedApiKey: %v", err)
+	}
+	if code, captured := authRequest(t, repo, secret); code != http.StatusOK || captured == nil {
+		t.Fatalf("issued key rejected with %d (captured=%v)", code, captured)
+	}
+
+	const rotated = "sk-issued-rotated-abcdef654321"
+	next, err := keikey.Hash(rotated)
+	if err != nil {
+		t.Fatalf("Hash: %v", err)
+	}
+	if err := repo.RotateApiKeySecret("i1", next, keikey.LookupHash(rotated), handlerutil.MaskAPIKey(rotated)); err != nil {
+		t.Fatalf("RotateApiKeySecret: %v", err)
+	}
+	// The handler pairs the rotation with this call; the cache would otherwise
+	// keep serving the row it verified a moment ago.
+	keikey.DefaultAuthCache().InvalidateByID("i1")
+
+	if code, _ := authRequest(t, repo, secret); code != http.StatusUnauthorized {
+		t.Fatalf("the rotated-away secret returned %d, want 401", code)
+	}
+	if code, _ := authRequest(t, repo, rotated); code != http.StatusOK {
+		t.Fatalf("the replacement secret returned %d, want 200", code)
 	}
 }
 

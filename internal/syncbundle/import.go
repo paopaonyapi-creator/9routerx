@@ -166,15 +166,15 @@ func importAPIKeys(repo *db.Repo, keys []KeyMeta, count *SectionCount) error {
 			return fmt.Errorf("syncbundle.Import: api key %s: %w", k.ID, err)
 		}
 		if !exists {
-			// The placeholder is keyed on the id, so it satisfies the
-			// column's UNIQUE constraint even when two keys mask alike.
-			if err := repo.CreateApiKey(k.ID, "sxb1-masked:"+k.ID, derefString(k.Name), derefString(k.MachineID)); err != nil {
-				return fmt.Errorf("syncbundle.Import: api key %s: create: %w", k.ID, err)
-			}
-			count.Created++
-		} else {
-			count.Updated++
+			// The bundle carries no key material, and a row created from a
+			// placeholder would be a credential derived from public metadata:
+			// anyone holding the bundle knows the id. Policy that cannot be
+			// restored without a secret is not restored; the operator creates
+			// the key on this instance instead.
+			count.Skipped++
+			continue
 		}
+		count.Updated++
 
 		// The setters are unconditional: zero values mean "unset" in every
 		// one of them, which is exactly what an absent bundle field means.

@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"9routerx/proxy/internal/keikey"
 )
 
 // createTestKey mints a key through the handler and returns its id and the
@@ -55,11 +57,10 @@ func listKeys(t *testing.T, router http.Handler) map[string]any {
 	return listed[0]
 }
 
-// TestApiKeySecretIsReadableAgain is the contract issue #199 asks for: the
-// dashboard can reveal and copy a key after it was created. Reversing the F-6
-// one-time disclosure is what makes the show/hide and copy buttons in the
-// endpoint table do anything.
-func TestApiKeySecretIsReadableAgain(t *testing.T) {
+// TestApiKeySecretShownOnceAtCreation is the hash-only contract: the create
+// response is the only place the secret appears. The row stores a verifier and
+// a mask, so a later listing shows the mask and marks the row unrevealable.
+func TestApiKeySecretShownOnceAtCreation(t *testing.T) {
 	repo, cleanup := setupTestDB(t)
 	defer cleanup()
 	router := setupTestRouter(repo)
@@ -71,20 +72,59 @@ func TestApiKeySecretIsReadableAgain(t *testing.T) {
 		t.Fatalf("disable requireLogin: %v", err)
 	}
 
-	_, full := createTestKey(t, router, "Readable Key")
+	id, full := createTestKey(t, router, "Readable Key")
 
 	row := listKeys(t, router)
-	if got, _ := row["key"].(string); got != full {
-		t.Errorf("key = %q, want the full secret %q", got, full)
+	if got, _ := row["key"].(string); got != "" {
+		t.Errorf("key = %q, want empty after creation", got)
 	}
-	// keyDisplay stays masked: it is the compact identifier the table falls
-	// back to for a caller that must not see the secret.
+	if revealable, _ := row["revealable"].(bool); revealable {
+		t.Error("revealable = true for a hash-only key, want false")
+	}
+	// keyDisplay stays masked: it is what the table renders in place of a
+	// secret it can no longer read.
 	masked, _ := row["keyDisplay"].(string)
 	if masked == "" || masked == full {
 		t.Errorf("keyDisplay = %q, want a masked value distinct from the secret", masked)
 	}
 	if strings.Contains(masked, full) {
 		t.Errorf("keyDisplay %q contains the full secret", masked)
+	}
+
+	// The stored row must not hold the plaintext in any column.
+	stored, err := repo.GetApiKeyByID(id)
+	if err != nil || stored == nil {
+		t.Fatalf("read stored row: %v", err)
+	}
+	if stored.Key == full || strings.Contains(stored.Key, full) {
+		t.Error("the plaintext secret is stored in the key column")
+	}
+	if stored.KeyHash == nil || *stored.KeyHash == "" {
+		t.Error("no argon2id verifier stored for the issued key")
+	}
+}
+
+// TestLegacyPlaintextKeyStaysRevealable is the transition half: a row written
+// while #199 kept the plaintext still reveals to a dashboard credential, so an
+// operator can migrate a client before that row is rotated.
+func TestLegacyPlaintextKeyStaysRevealable(t *testing.T) {
+	repo, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupTestRouter(repo)
+	if err := repo.UpdateSettingsRaw(map[string]any{"requireLogin": false}); err != nil {
+		t.Fatalf("disable requireLogin: %v", err)
+	}
+
+	const legacy = "sk-legacy-plaintext-secret-value"
+	if err := repo.CreateApiKey("legacy-row", legacy, "Legacy", ""); err != nil {
+		t.Fatalf("seed legacy row: %v", err)
+	}
+	row := listKeys(t, router)
+	if got, _ := row["key"].(string); got != legacy {
+		t.Errorf("legacy key = %q, want the stored plaintext", got)
+	}
+	if revealable, _ := row["revealable"].(bool); !revealable {
+		t.Error("revealable = false for a legacy row, want true")
 	}
 }
 
@@ -132,6 +172,58 @@ func TestApiKeySecretHiddenFromApiKeyCallers(t *testing.T) {
 	}
 	if got, _ := found["keyDisplay"].(string); got == "" {
 		t.Error("keyDisplay is empty for an api-key caller; the table would render nothing")
+	}
+}
+
+// TestRotateApiKeyHandsBackSecretOnce covers the second issuance path: rotate
+// mints a replacement, hands it back in the response, and the row it replaced
+// is listed with the new mask and no reveal control.
+func TestRotateApiKeyHandsBackSecretOnce(t *testing.T) {
+	repo, cleanup := setupTestDB(t)
+	defer cleanup()
+	router := setupTestRouter(repo)
+	if err := repo.UpdateSettingsRaw(map[string]any{"requireLogin": false}); err != nil {
+		t.Fatalf("disable requireLogin: %v", err)
+	}
+
+	id, first := createTestKey(t, router, "Rotated Key")
+	req := httptest.NewRequest(http.MethodPost, "/api/keys/"+id+"/rotate", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("rotate: status %d: %s", rec.Code, rec.Body.String())
+	}
+	var rotated map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &rotated); err != nil {
+		t.Fatalf("unmarshal rotate response: %v", err)
+	}
+	fresh, _ := rotated["key"].(string)
+	if fresh == "" || fresh == first {
+		t.Fatalf("rotate returned key %q, want a new secret", fresh)
+	}
+	if revealable, _ := rotated["revealable"].(bool); revealable {
+		t.Error("rotate reported the replacement as revealable")
+	}
+
+	row := listKeys(t, router)
+	if got, _ := row["key"].(string); got != "" {
+		t.Errorf("listed key = %q, want empty", got)
+	}
+	if revealable, _ := row["revealable"].(bool); revealable {
+		t.Error("listed row is revealable after rotation, want false")
+	}
+
+	// The replacement is the credential the engine must accept; the old one is
+	// gone from the row entirely.
+	stored, err := repo.GetApiKeyByID(id)
+	if err != nil || stored == nil {
+		t.Fatalf("read stored row: %v", err)
+	}
+	if stored.KeyHash == nil || !keikey.Verify(fresh, *stored.KeyHash) {
+		t.Fatal("the rotated secret does not verify against the stored row")
+	}
+	if keikey.Verify(first, *stored.KeyHash) {
+		t.Fatal("the previous secret still verifies against the stored row")
 	}
 }
 

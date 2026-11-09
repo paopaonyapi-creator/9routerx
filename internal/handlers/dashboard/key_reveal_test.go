@@ -44,24 +44,47 @@ func TestKeyRevealHeadersAndLogs(t *testing.T) {
 	if err := repo.UpdateSettingsRaw(map[string]any{"requireLogin": false}); err != nil {
 		t.Fatal(err)
 	}
-	id, secret := createTestKey(t, router, "audit-test-key")
+
+	// A freshly issued key is hash-only: the list must neither disclose it nor
+	// log a reveal it did not perform.
+	_, issued := createTestKey(t, router, "audit-test-key")
 	log.ClearConsoleLogs()
 	req := httptest.NewRequest(http.MethodGet, "/api/keys", nil)
 	req.RemoteAddr = "127.0.0.1:23456"
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	assertRevealHeaders(t, rec)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), secret) {
-		t.Fatal("privileged list no longer reveals its stored key")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list status = %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), issued) {
+		t.Fatal("a hash-only row disclosed its secret")
+	}
+	if len(revealLogs()) != 0 {
+		t.Fatal("a masked row produced a reveal log")
+	}
+
+	// A legacy row still holding its plaintext is revealed and logged.
+	const legacyID = "audit-test-legacy-key"
+	const legacySecret = "sk-legacy-audit-secret-value"
+	if err := repo.CreateApiKey(legacyID, legacySecret, "Legacy", ""); err != nil {
+		t.Fatal(err)
+	}
+	log.ClearConsoleLogs()
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	assertRevealHeaders(t, rec)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), legacySecret) {
+		t.Fatal("privileged list no longer reveals a legacy stored key")
 	}
 	lines := revealLogs()
 	if len(lines) != 1 {
 		t.Fatalf("reveal log count = %d, want 1", len(lines))
 	}
-	if strings.Contains(lines[0], secret) || strings.Contains(lines[0], id) {
+	if strings.Contains(lines[0], legacySecret) || strings.Contains(lines[0], legacyID) {
 		t.Fatal("reveal log contains plaintext secret or unmasked ID")
 	}
-	if !strings.Contains(lines[0], "127.0.0.1:23456") || !strings.Contains(lines[0], handlerutil.RunePrefix(id, 4)) {
+	if !strings.Contains(lines[0], "127.0.0.1:23456") || !strings.Contains(lines[0], handlerutil.RunePrefix(legacyID, 4)) {
 		t.Fatal("reveal log omits masked ID or remote address")
 	}
 
@@ -72,7 +95,7 @@ func TestKeyRevealHeadersAndLogs(t *testing.T) {
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	assertRevealHeaders(t, rec)
-	if strings.Contains(rec.Body.String(), secret) || len(revealLogs()) != 0 {
+	if strings.Contains(rec.Body.String(), legacySecret) || len(revealLogs()) != 0 {
 		t.Fatal("redacted list disclosed or logged a secret reveal")
 	}
 }

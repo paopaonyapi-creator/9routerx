@@ -295,16 +295,15 @@ func HandleUsageStats(repo *db.Repo) http.HandlerFunc {
 				if k.Name == nil || *k.Name == "" {
 					continue
 				}
-				trimmed := strings.TrimSpace(k.Key)
-				if trimmed != "" {
-					keyNames[trimmed] = *k.Name
-					if m := maskAPIKeyForStats(trimmed); m != "" {
+				// LedgerIdentity resolves the spelling the ledger actually
+				// carries: the plaintext for a legacy row, the stored mask for a
+				// hash-only one. Index it and its masked form, so a stored row
+				// resolves either way without ever leaking the secret.
+				if secret := db.LedgerIdentity(k); secret != "" {
+					keyNames[secret] = *k.Name
+					if m := maskAPIKeyForStats(secret); m != "" {
 						keyNames[m] = *k.Name
 					}
-				}
-				keyNames[k.Key] = *k.Name
-				if m := maskAPIKeyForStats(k.Key); m != "" {
-					keyNames[m] = *k.Name
 				}
 			}
 		}

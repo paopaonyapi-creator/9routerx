@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"9routerx/proxy/internal/budget"
+	"9routerx/proxy/internal/db"
 	"9routerx/proxy/internal/handlerutil"
 	"9routerx/proxy/internal/log"
 	"9routerx/proxy/internal/models"
@@ -698,9 +699,10 @@ func (rl *RateLimiter) keyBusy(keyID string) bool {
 // TokenUsageReader reports a key's cumulative prompt+completion tokens, which
 // is what a lifetime tokenQuota is measured against. It is a narrow interface
 // so the limiter does not bind to the repository and a test can supply a fixed
-// number without a database.
+// number without a database. It is addressed by row id because a hash-only key
+// has no plaintext left to look up.
 type TokenUsageReader interface {
-	GetApiKeyTokenUsage(rawKey string) (int, error)
+	GetApiKeyTokenUsageByID(ctx context.Context, keyID string) (int, error)
 }
 
 // RequireRateLimit creates a middleware that enforces per-key rate limits.
@@ -1002,10 +1004,10 @@ func queueScope(limits Limits) string {
 // allowlist read degrades to "allow all". The quota is a spend ceiling, not an
 // access grant, so failing open costs at most a delayed enforcement.
 func quotaCheck(w http.ResponseWriter, r *http.Request, apiKey *models.APIKey, limits Limits, usage TokenUsageReader) bool {
-	if limits.TokenQuota <= 0 || usage == nil || apiKey.Key == "" {
+	if limits.TokenQuota <= 0 || usage == nil || apiKey == nil || apiKey.ID == "" {
 		return false
 	}
-	used, err := usage.GetApiKeyTokenUsage(apiKey.Key)
+	used, err := usage.GetApiKeyTokenUsageByID(r.Context(), apiKey.ID)
 	if err != nil {
 		log.Warn("rate limit", "token quota read failed, allowing", "key", apiKey.ID, "error", err)
 		return false
@@ -1042,14 +1044,17 @@ func queueRetryAfter(limits Limits) int {
 // with a warning header rather than refused, so a client can see the budget
 // closing without being cut off mid-session.
 func budgetCheck(w http.ResponseWriter, r *http.Request, apiKey *models.APIKey, limits Limits) bool {
-	if !limits.Budget.Armed() || apiKey == nil || apiKey.Key == "" {
+	// A hash-only key has no plaintext left; its ledger spelling is the mask
+	// stored at issuance, which the reader matches like any other secret.
+	secret := db.LedgerIdentity(apiKey)
+	if !limits.Budget.Armed() || secret == "" {
 		return false
 	}
 	reader := rlFromRequest(r)
 	if reader == nil {
 		return false
 	}
-	d := budget.Check(r.Context(), reader.budgetReader(), apiKey.Key, limits.Budget, time.Now())
+	d := budget.Check(r.Context(), reader.budgetReader(), secret, limits.Budget, time.Now())
 	if d.Alerting && !d.Refuse {
 		w.Header().Set("X-Budget-Status", "approaching")
 	}

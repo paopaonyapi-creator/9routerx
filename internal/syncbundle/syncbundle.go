@@ -242,8 +242,11 @@ func exportAPIKeys(repo *db.Repo) ([]KeyMeta, error) {
 			continue
 		}
 		meta := KeyMeta{
-			ID:                   k.ID,
-			KeyMasked:            maskKey(k.Key),
+			ID:    k.ID,
+			// A hash-only row's key column holds a sentinel derived from its
+			// lookup hash, so masking that column would ship a fragment of the
+			// index. The stored mask is what identifies the row to an operator.
+			KeyMasked:            maskKey(db.LedgerIdentity(k)),
 			Name:                 k.Name,
 			MachineID:            k.MachineID,
 			IsActive:             k.IsActive,

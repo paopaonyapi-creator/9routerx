@@ -118,30 +118,21 @@ func TestRoundTripExportEncryptDecryptImport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	if report.APIKeys.Created != 1 || report.Connections.Created != 1 ||
+	if report.APIKeys.Created != 0 || report.APIKeys.Skipped != 1 || report.Connections.Created != 1 ||
 		report.Combos.Created != 1 || report.Teams.Created != 1 || report.Webhooks.Created != 1 {
 		t.Fatalf("unexpected report: %s", report)
 	}
 	if report.SettingsKeys == 0 {
 		t.Fatalf("settings section empty")
 	}
-	if got := countRows(t, dst, "apiKeys"); got != countRows(t, src, "apiKeys") {
-		t.Fatalf("apiKeys count = %d, want %d", got, countRows(t, src, "apiKeys"))
+	// The bundle carries mask metadata only. Creating a row from it would mint
+	// a credential derived from the bundle's own contents, so the key is
+	// skipped rather than created.
+	if got := countRows(t, dst, "apiKeys"); got != 0 {
+		t.Fatalf("apiKeys count = %d after import, want 0 (secrets are not in the bundle)", got)
 	}
 	if got := countRows(t, dst, "combos"); got != countRows(t, src, "combos") {
 		t.Fatalf("combos count = %d, want %d", got, countRows(t, src, "combos"))
-	}
-
-	// The key metadata survived, not just the row.
-	keys, err := dst.GetApiKeys()
-	if err != nil || len(keys) != 1 {
-		t.Fatalf("GetApiKeys: %v (%d keys)", err, len(keys))
-	}
-	if keys[0].Name == nil || *keys[0].Name != "main key" {
-		t.Fatalf("key name = %v", keys[0].Name)
-	}
-	if keys[0].RateLimitRPM == nil || *keys[0].RateLimitRPM != 10 {
-		t.Fatalf("rateLimitRPM = %v", keys[0].RateLimitRPM)
 	}
 
 	// The provider credential came through the vault: sealed on the way out,
@@ -281,7 +272,7 @@ func TestPlaintextImportAccepted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Import of a prefix-less bundle must be accepted: %v", err)
 	}
-	if report.Combos.Created != 1 || report.APIKeys.Created != 1 {
+	if report.Combos.Created != 1 || report.APIKeys.Created != 0 || report.APIKeys.Skipped != 1 {
 		t.Fatalf("unexpected report: %s", report)
 	}
 }
@@ -303,19 +294,23 @@ func TestDoubleImportIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Import: %v", err)
 	}
-	// Re-import touches nothing new: every section flips from created to
-	// updated and the counts stay put.
+	// Re-import touches nothing new, and a key the first import skipped stays
+	// skipped: its secret was never in the bundle.
 	if second.APIKeys.Created != 0 || second.Connections.Created != 0 ||
 		second.Combos.Created != 0 || second.Teams.Created != 0 || second.Webhooks.Created != 0 {
 		t.Fatalf("second import created rows: %s", second)
 	}
-	if second.APIKeys.Updated != first.APIKeys.Created || second.Combos.Updated != first.Combos.Created {
+	if second.APIKeys.Updated != 0 || second.APIKeys.Skipped != 1 ||
+		second.Combos.Updated != first.Combos.Created {
 		t.Fatalf("second import did not mirror the first: first=%s second=%s", first, second)
 	}
-	for _, table := range []string{"apiKeys", "combos", "providerConnections", "teams", "webhookTargets"} {
+	for _, table := range []string{"combos", "providerConnections", "teams", "webhookTargets"} {
 		if got := countRows(t, dst, table); got != 1 {
 			t.Fatalf("%s count = %d after double import, want 1", table, got)
 		}
+	}
+	if got := countRows(t, dst, "apiKeys"); got != 0 {
+		t.Fatalf("apiKeys count = %d after double import, want 0", got)
 	}
 	settings, err := dst.GetSettingsRaw()
 	if err != nil || settings["rtkEnabled"] != true {

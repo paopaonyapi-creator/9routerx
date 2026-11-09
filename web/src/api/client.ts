@@ -126,6 +126,12 @@ export interface APIKey {
    * cannot be recovered — the UI falls back to `keyDisplay` in both cases.
    */
   key: string
+  /**
+   * True only while the row still holds a plaintext secret the dashboard may
+   * reveal. Keys issued by this build store a hash, so they are not revealable:
+   * the value is shown once at create/rotate and never again.
+   */
+  revealable?: boolean
   name: string | null
   machineId: string | null
   isActive: number
@@ -1791,7 +1797,7 @@ export const api = {
   // API Keys
   getApiKeys: () => request<APIKey[]>('/api/keys'),
   createApiKey: (payload: { name?: string; machineId?: string; key?: string }) =>
-    request<{ success: boolean; id: string; key: string }>('/api/keys', {
+    request<{ success: boolean; id: string; key: string; revealable: boolean }>('/api/keys', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -1806,7 +1812,7 @@ export const api = {
 
   /** Mints a replacement secret, keeping the row's id, policy and history. */
   rotateApiKey: (id: string) =>
-    request<{ status: string; id: string; key: string }>(`/api/keys/${encodeURIComponent(id)}/rotate`, {
+    request<{ status: string; id: string; key: string; revealable: boolean }>(`/api/keys/${encodeURIComponent(id)}/rotate`, {
       method: 'POST',
     }),
   /**

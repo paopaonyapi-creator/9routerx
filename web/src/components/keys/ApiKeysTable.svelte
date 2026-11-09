@@ -20,6 +20,7 @@
   import { api, type APIKey } from '../../api/client'
   import { notifications } from '../../lib/notifications'
   import { copyToClipboard } from '../../lib/clipboard'
+  import { t } from '../../lib/i18n.svelte'
   import Card from '../../lib/ui/Card.svelte'
   import Menu from '../../lib/ui/Menu.svelte'
   import MenuItem from '../../lib/ui/MenuItem.svelte'
@@ -188,13 +189,19 @@
     return `${Math.ceil(textW + chromeW)}px`
   })
   // The full secret, when the server had one to give. Empty for a caller
-  // authenticated with an engine client key, and for rows minted before #199
-  // whose plaintext was hashed away — both fall back to keyDisplay, and the
-  // reveal button is hidden rather than shown disabled, because there is
-  // nothing behind it.
+  // authenticated with an engine client key, and for every row this build
+  // issues — its secret is stored hashed, so the value exists only in the
+  // response that minted it. Those responses are held here for as long as the
+  // page lives, which is the one-time window the operator gets to copy it.
+  const oneTimeSecrets = $state(new Map<string, string>())
   function secretOf(k: APIKey): string {
-    return k.key || ''
+    return oneTimeSecrets.get(k.id) ?? k.key ?? ''
   }
+
+  // The tooltip behind a disabled reveal control, so an operator is told why
+  // the value cannot be shown rather than left clicking a dead button.
+  const NOT_REVEALABLE =
+    'This key is stored hashed. Its secret cannot be shown — rotate the key to get a new one.'
 
   function isRevealable(k: APIKey): boolean {
     return secretOf(k) !== ''
@@ -435,10 +442,17 @@
     if (!confirm(`Replace the secret for "${keyLabel(k)}"? The current key stops working immediately.`))
       return
     return runExclusive(k.id, async () => {
-      await api.rotateApiKey(k.id)
-      // The row's displayed secret is stale the moment it is replaced; drop the
-      // reveal so the old value cannot linger on screen.
-      if (shownKeyIds.has(k.id)) toggleShow(k.id)
+      const res = await api.rotateApiKey(k.id)
+      // The replacement exists only in this response: the row now holds a
+      // verifier. Keep it for the life of the page and open the reveal, which
+      // is the operator's one chance to copy it.
+      if (res.key) {
+        oneTimeSecrets.set(k.id, res.key)
+        if (!shownKeyIds.has(k.id)) toggleShow(k.id)
+      }
+      notifications.success(
+        `New secret for "${keyLabel(k)}" is shown once. Copy it now — it cannot be revealed again.`,
+      )
       onRefresh?.()
     })
   }
@@ -861,13 +875,26 @@
               <Eye class="w-3.5 h-3.5" />
             {/if}
           </button>
+        {:else}
+          <button
+            type="button"
+            disabled
+            class="shrink-0 ml-auto p-1 rounded-md text-text-subtle opacity-50 cursor-not-allowed"
+            aria-label={`Key ${keyLabel(k)} cannot be revealed`}
+            title={t(NOT_REVEALABLE)}
+          >
+            <Eye class="w-3.5 h-3.5" />
+          </button>
         {/if}
         <button
           type="button"
           onclick={() => handleCopy(k)}
-          class="shrink-0 p-1 rounded-md text-text-muted hover:text-brand-500 hover:bg-surface-2 transition-colors cursor-pointer"
+          disabled={!isRevealable(k)}
+          class={isRevealable(k)
+            ? 'shrink-0 p-1 rounded-md text-text-muted hover:text-brand-500 hover:bg-surface-2 transition-colors cursor-pointer'
+            : 'shrink-0 p-1 rounded-md text-text-subtle opacity-50 cursor-not-allowed'}
           aria-label={`Copy key ${keyLabel(k)}`}
-          title="Copy key"
+          title={isRevealable(k) ? 'Copy key' : t(NOT_REVEALABLE)}
         >
           {#if copiedId === k.id}
             <Check class="w-3.5 h-3.5 text-success" />

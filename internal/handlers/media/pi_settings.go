@@ -345,7 +345,11 @@ func (h *PiHandler) resolveAPIKey(caller, stored any) string {
 		return ""
 	}
 	for _, k := range keys {
-		if k.IsActive == 1 {
+		// A hash-only row has no plaintext left, so it cannot supply a
+		// credential. Handing out its sentinel would write a value that never
+		// authenticates, which is worse than the empty answer: pi would look
+		// configured and fail on every call.
+		if k.IsActive == 1 && !db.IsHashedKeyRow(k) {
 			if key := strings.TrimSpace(k.Key); key != "" {
 				return key
 			}

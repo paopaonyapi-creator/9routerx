@@ -20,11 +20,12 @@ import (
 
 // HandleGetApiKeys handles GET /api/keys.
 //
-// Issue #199 makes the secret readable again so the dashboard can reveal and
-// copy it, which reverses the F-6 contract. That reversal is scoped to
-// dashboard credentials: a caller holding only an engine client key — the
-// credential handed to Cursor or Claude Code — still gets the masked value, so
-// one leaked key cannot dump the whole key set.
+// Keys issued by this build store only an argon2id verifier, so their `key`
+// field is empty and `revealable` is false; the row carries the mask instead.
+// Rows written while issue #199 kept the plaintext are still revealed to a
+// dashboard credential so an operator can migrate their clients, and a caller
+// holding only an engine client key keeps getting the masked value — one
+// leaked key cannot dump the whole key set.
 func (h *DashboardHandler) HandleGetApiKeys(w http.ResponseWriter, r *http.Request) {
 	protectKeyReveal(w)
 	keys, err := h.Repo.GetApiKeys()
@@ -98,6 +99,10 @@ func (h *DashboardHandler) HandleGetApiKeys(w http.ResponseWriter, r *http.Reque
 			// "what may this key call".
 			"access": access,
 			"id":     k.ID, "key": secret, "keyDisplay": apiKeyDisplay(k), "name": k.Name,
+			// A hash-only row has no plaintext left, so the dashboard must offer
+			// no reveal control for it. Legacy rows keep their plaintext for the
+			// transition period and stay revealable here.
+			"revealable": !db.IsHashedKeyRow(k),
 			"machineId": k.MachineID, "isActive": k.IsActive, "createdAt": k.CreatedAt,
 			// The governance columns belong in the list, not only behind a
 			// per-key fetch: the dashboard has to tell a constrained key from
@@ -148,9 +153,9 @@ func (h *DashboardHandler) HandleGetApiKeys(w http.ResponseWriter, r *http.Reque
 }
 
 // apiKeySecretFor returns the stored secret to a dashboard credential and the
-// masked value to everyone else. Rows written before issue #199 hold only an
-// argon2id verifier, so their plaintext is unrecoverable and the caller gets an
-// empty string; the row falls back to its masked display in the UI.
+// masked value to everyone else. A hash-only row has no plaintext left — its
+// secret exists only as a verifier — so it returns an empty string and the UI
+// falls back to the mask with no reveal control.
 func apiKeySecretFor(k *models.APIKey, privileged bool) string {
 	if !privileged || db.IsHashedKeyRow(k) {
 		return ""
@@ -225,6 +230,11 @@ func stringOrEmpty(v *string) string {
 
 // HandleCreateApiKey handles POST /api/keys.
 // Creates new apiKey (generates uuid if empty, or key if empty sk-...).
+//
+// The secret is returned exactly once, in this response, and stored only as an
+// argon2id verifier plus a mask: a later listing cannot reveal it. That is the
+// trade-off issue #199 reversed and this policy reinstates deliberately — an
+// operator who loses the value rotates the key, they do not read it back.
 func (h *DashboardHandler) HandleCreateApiKey(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -262,34 +272,29 @@ func (h *DashboardHandler) HandleCreateApiKey(w http.ResponseWriter, r *http.Req
 		req.Key = "sk-" + strings.ReplaceAll(uuid.New().String(), "-", "")
 	}
 
+	verifier, err := keikey.Hash(req.Key)
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	display := handlerutil.MaskAPIKey(req.Key)
+
 	// Write-ahead audit: the create is trailed before it happens, so a failed
 	// create still leaves a trace. The secret never enters the log — the id
 	// and the operator-facing fields are what an auditor needs.
 	h.recordAudit(r, AuditActionCreateKey, req.ID, nil, map[string]any{
 		"id": req.ID, "name": req.Name, "machineId": req.MachineID,
 	})
-	if err := h.Repo.CreateApiKey(req.ID, req.Key, req.Name, req.MachineID); err != nil {
-		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	// The secret is stored in the clear so the dashboard can reveal and copy
-	// it again later (issue #199). This reopens the F-6/DB-02 trade-off — a
-	// database dump exposes every client key — but an operator who cannot
-	// read a key back cannot use the row they just created either.
-
-	// The masked value is kept alongside it: the list still renders a compact
-	// identifier, and a row that predates this change has no plaintext to show.
-	if err := h.Repo.SetApiKeyDisplay(req.ID, keikey.Mask(req.Key)); err != nil {
-		log.Error("apikeys", "store api key display failed", "error", err)
+	if err := h.Repo.CreateHashedApiKey(req.ID, verifier, keikey.LookupHash(req.Key), display, req.Name, req.MachineID); err != nil {
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
-		"status": "ok",
-		"id":     req.ID,
-		"key":    req.Key,
+		"status":     "ok",
+		"id":         req.ID,
+		"key":        req.Key,
+		"revealable": false,
 	})
 }
 
@@ -315,7 +320,12 @@ func (h *DashboardHandler) HandleRotateApiKey(w http.ResponseWriter, r *http.Req
 	}
 
 	plaintext := "sk-" + strings.ReplaceAll(uuid.New().String(), "-", "")
-	if err := h.Repo.RotateApiKeySecret(id, plaintext, keikey.Mask(plaintext)); err != nil {
+	verifier, err := keikey.Hash(plaintext)
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := h.Repo.RotateApiKeySecret(id, verifier, keikey.LookupHash(plaintext), handlerutil.MaskAPIKey(plaintext)); err != nil {
 		log.Error("apikeys", "rotate: store secret failed", "error", err)
 		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -324,10 +334,13 @@ func (h *DashboardHandler) HandleRotateApiKey(w http.ResponseWriter, r *http.Req
 	// leaked secret keeps working after the operator rotated it away.
 	keikey.DefaultAuthCache().InvalidateByID(id)
 
+	// The replacement is handed back once, like a create: the row keeps only a
+	// verifier, so this is the only moment the operator can copy it.
 	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{
-		"status": "ok",
-		"id":     id,
-		"key":    plaintext,
+		"status":     "ok",
+		"id":         id,
+		"key":        plaintext,
+		"revealable": false,
 	})
 }
 

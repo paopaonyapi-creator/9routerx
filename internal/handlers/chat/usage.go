@@ -351,7 +351,7 @@ func (h *ChatHandler) logUsage(ctx context.Context, info *UsageLogInfo, usage *t
 	callerID := ""
 	billingTeamID := ""
 	if caller := middleware.AuthenticatedApiKeyFromContext(ctx); caller != nil {
-		clientKey = maskAPIKey(caller.Key)
+		clientKey = db.LedgerMask(caller)
 		callerID = caller.ID
 		// Tenant cost centers (FASE 7): the row is stamped with the team the
 		// key belonged to AT REQUEST TIME — re-pointing a key to another team

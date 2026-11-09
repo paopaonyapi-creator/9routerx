@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"9routerx/proxy/internal/handlerutil"
 	"9routerx/proxy/internal/models"
 )
 
@@ -377,6 +378,41 @@ func IsHashedKeyRow(k *models.APIKey) bool {
 	return k != nil && strings.HasPrefix(k.Key, hashedKeyPrefix)
 }
 
+// LedgerIdentity returns the secret spelling the usage ledger and the budget
+// reader match for this key. A legacy row still holds its plaintext, so the
+// ledger can carry it verbatim; a hash-only row has no plaintext left and the
+// mask recorded at issuance is the only form its spend can be matched on.
+// MaskAPIKey is idempotent, so a caller that still expects a raw key can pass
+// either spelling to the existing readers unchanged.
+func LedgerIdentity(k *models.APIKey) string {
+	if k == nil {
+		return ""
+	}
+	if !IsHashedKeyRow(k) && k.Key != "" {
+		return k.Key
+	}
+	if k.KeyDisplay != nil {
+		return *k.KeyDisplay
+	}
+	return ""
+}
+
+// LedgerMask returns the masked spelling this gateway records in usageHistory
+// for the key: the mask of the plaintext while a legacy row still holds one,
+// otherwise the mask stored when the secret was issued.
+func LedgerMask(k *models.APIKey) string {
+	if k == nil {
+		return ""
+	}
+	if !IsHashedKeyRow(k) && k.Key != "" {
+		return handlerutil.MaskAPIKey(k.Key)
+	}
+	if k.KeyDisplay != nil {
+		return *k.KeyDisplay
+	}
+	return ""
+}
+
 // HashApiKeyRow fills the F-6 hash columns for a row and replaces the
 // plaintext `key` column with the hashed-row sentinel. A sentinel `key` is how
 // a hashed row is recognised; legacy rows keep their plaintext and
@@ -403,17 +439,18 @@ func (r *Repo) GetApiKeyByID(id string) (*models.APIKey, error) {
 	return r.queryApiKey("FROM apiKeys WHERE id = ? LIMIT 1", id)
 }
 
-// RotateApiKeySecret replaces a row's secret with a new plaintext value and
-// refreshes its masked display.
+// RotateApiKeySecret replaces a row's secret with a fresh argon2id verifier and
+// the mask recorded for it.
 //
-// The hash columns are cleared rather than left stale: a row that still carried
-// a verifier from before issue #199 would keep being resolved through the
-// argon2id path, so its new secret would never be found and the key would
-// appear dead to every client holding it.
-func (r *Repo) RotateApiKeySecret(id, plaintext, keyDisplay string) error {
+// The plaintext never reaches the row: `key` becomes the per-row sentinel, so a
+// database dump after a rotation exposes no usable credential. The verifier and
+// lookup index replace the old pair in the same statement, which is what makes
+// the previous secret stop authenticating the moment the cache entry is
+// invalidated.
+func (r *Repo) RotateApiKeySecret(id, keyHash, lookupHash, keyDisplay string) error {
 	res, err := r.db.Exec(
-		`UPDATE apiKeys SET key = ?, keyDisplay = ?, keyHash = '', lookupHash = '' WHERE id = ?`,
-		plaintext, keyDisplay, id,
+		`UPDATE apiKeys SET key = ?, keyHash = ?, lookupHash = ?, keyDisplay = ? WHERE id = ?`,
+		hashedKeySentinel(lookupHash), keyHash, lookupHash, keyDisplay, id,
 	)
 	if err != nil {
 		return fmt.Errorf("rotate api key secret %s: %w", id, err)

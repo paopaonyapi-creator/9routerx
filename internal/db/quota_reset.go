@@ -180,7 +180,8 @@ func (r *Repo) GetApiKeyTokenUsageForKeys(ctx context.Context, keys []*models.AP
 	seen := make(map[string]bool, len(keys))
 	pending := make([]*models.APIKey, 0, len(keys))
 	for _, k := range keys {
-		if k == nil || k.ID == "" || k.Key == "" || seen[k.ID] {
+		secret := LedgerIdentity(k)
+		if k == nil || k.ID == "" || secret == "" || seen[k.ID] {
 			continue
 		}
 		seen[k.ID] = true
@@ -226,8 +227,9 @@ func (r *Repo) GetApiKeyTokenUsageForKeys(ctx context.Context, keys []*models.AP
 	args := make([]any, 0, 4*len(pending))
 	cteRows := make([]string, 0, len(pending))
 	for _, k := range pending {
+		secret := LedgerIdentity(k)
 		cteRows = append(cteRows, "(?,?,?,?)")
-		args = append(args, k.ID, k.Key, handlerutil.MaskAPIKey(k.Key), marks[k.ID])
+		args = append(args, k.ID, secret, handlerutil.MaskAPIKey(secret), marks[k.ID])
 	}
 
 	rows, err := r.db.QueryContext(ctx, apiKeyTokenUsageBatchQuery(len(cteRows)), args...)
@@ -286,28 +288,22 @@ func (r *Repo) GetApiKeyTokenUsageByID(ctx context.Context, keyID string) (int, 
 	if err != nil {
 		return 0, err
 	}
-	return r.tokenUsageSince(ctx, row.Key, mark)
+	return r.tokenUsageSince(ctx, keyID, LedgerIdentity(row), mark)
 }
 
 // tokenUsageSince sums a key's prompt+completion tokens recorded after a reset
 // mark. A mark of 0 means "the key's whole life", which is the pre-#365 answer.
 //
-// Matching is by the raw key's masked form as well, because that is what this
-// gateway writes into usageHistory (maskAPIKey) and rows the upstream Next.js
-// dashboard wrote keep the full key: both spellings are summed.
+// secret is the ledger spelling from LedgerIdentity: the plaintext for a row
+// that still holds one, the stored mask for a hash-only row. Its masked form is
+// matched in clientKey — that is what this gateway writes into usageHistory
+// (maskAPIKey) — and both spellings are matched in apiKey so rows the upstream
+// Next.js dashboard wrote keep counting. Masking an already-masked secret is
+// idempotent, so a hash-only row simply matches the one form twice.
 //
-// clientKey is the column this gateway writes the caller's own key into (#365).
-// The apiKey terms keep rows written by the upstream Next.js dashboard counting:
-// that ledger stored the client key in apiKey, where this one stores the upstream
-// credential, so both spellings are summed.
-//
-// The carryover term is what keeps the sum exact once an operator prunes the
-// ledger (usage_retention_ledger.go): spend that lived in deleted rows is kept in
-// usageLedgerCarryover and added back here. It is resolved by the same key
-// secret this query already holds rather than by an id, so no caller has to know
-// one. A key whose row is absent resolves to no carryover, which is the same
-// answer as a key that never had one — and the ledger prune drops orphaned
-// carryover rows, so that only happens for a key created after a prune.
+// The carryover is resolved by row id when the caller knows it: a hash-only row
+// has no plaintext for the old `WHERE key = ?` probe, and its id is the only
+// stable handle left. The key-only fallback stays for the legacy reader.
 //
 // The history sum and the carryover are read in one statement so a prune landing
 // between two reads cannot report a spend that is neither the before nor the
@@ -317,21 +313,33 @@ func (r *Repo) GetApiKeyTokenUsageByID(ctx context.Context, keyID string) (int, 
 // which no single-column index serves, and the alternative — a join on the
 // apiKeys table — costs more than the scan it replaces. The carryover lookup is a
 // primary-key hit on a table with one row per client key.
-func (r *Repo) tokenUsageSince(ctx context.Context, rawKey string, mark int) (int, error) {
-	if rawKey == "" {
+func (r *Repo) tokenUsageSince(ctx context.Context, keyID, secret string, mark int) (int, error) {
+	if secret == "" {
 		return 0, nil
 	}
+	masked := handlerutil.MaskAPIKey(secret)
 	history := `COALESCE(SUM(COALESCE(promptTokens,0) + COALESCE(completionTokens,0)), 0)
+	   FROM usageHistory WHERE (clientKey = ? OR apiKey = ?)`
+	args := []any{masked, secret}
+	if masked != secret {
+		history = `COALESCE(SUM(COALESCE(promptTokens,0) + COALESCE(completionTokens,0)), 0)
 	   FROM usageHistory WHERE (clientKey = ? OR apiKey = ? OR apiKey = ?)`
-	args := []any{handlerutil.MaskAPIKey(rawKey), rawKey, handlerutil.MaskAPIKey(rawKey)}
+		args = append(args, masked)
+	}
 	if mark > 0 {
 		history += ` AND id > ?`
 		args = append(args, mark)
 	}
+	carryover := `WHERE keyId = (SELECT id FROM apiKeys WHERE key = ? LIMIT 1)`
+	carryoverArg := any(secret)
+	if keyID != "" {
+		carryover = `WHERE keyId = ?`
+		carryoverArg = keyID
+	}
 	query := `SELECT (SELECT ` + history + `)
 	   + COALESCE((SELECT tokens FROM usageLedgerCarryover
-	                WHERE keyId = (SELECT id FROM apiKeys WHERE key = ? LIMIT 1)), 0)`
-	args = append(args, rawKey)
+	                ` + carryover + `), 0)`
+	args = append(args, carryoverArg)
 
 	var used int64
 	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&used); err != nil {

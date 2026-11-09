@@ -105,12 +105,12 @@ func TestQuotaBoundaryExactlyAtCap(t *testing.T) {
 	}
 }
 
-// TestQuotaSkippedWhenKeySecretEmpty proves a key with no raw secret (a hashed
-// row whose plaintext is blank) does not attempt a usage read that could never
-// match, and is therefore allowed rather than spuriously refused.
-func TestQuotaSkippedWhenKeySecretEmpty(t *testing.T) {
+// TestQuotaReadsHashOnlyKeyByID proves a hash-only row — no plaintext left in
+// the key column — still has its spend measured: the quota is resolved by row
+// id, which is the only handle such a row has.
+func TestQuotaReadsHashOnlyKeyByID(t *testing.T) {
 	rl := NewRateLimiter(time.Minute)
-	counting := &countingUsage{}
+	counting := &countingUsage{tokens: 5}
 	handler := RequireRateLimit(rl, nil, counting)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -118,17 +118,39 @@ func TestQuotaSkippedWhenKeySecretEmpty(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	req = req.WithContext(withAPIKey(req, &models.APIKey{
 		ID:         "hashed",
-		Key:        "", // legacy/argon2id row, plaintext unrecoverable
+		Key:        "", // hash-only row: the secret exists only as a verifier
 		TokenQuota: new(1),
 	}))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403 for an exhausted hash-only key", rec.Code)
+	}
+	if counting.calls != 1 {
+		t.Errorf("usage reads = %d, want 1", counting.calls)
+	}
+}
+
+// TestQuotaSkippedWhenKeyIDEmpty proves a row without an id — which no real key
+// has — does not attempt a read that could never resolve.
+func TestQuotaSkippedWhenKeyIDEmpty(t *testing.T) {
+	rl := NewRateLimiter(time.Minute)
+	counting := &countingUsage{}
+	handler := RequireRateLimit(rl, nil, counting)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	req = req.WithContext(withAPIKey(req, &models.APIKey{TokenQuota: new(1)}))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200 (no secret to match, quota cannot apply)", rec.Code)
+		t.Errorf("status = %d, want 200 (no row to resolve, quota cannot apply)", rec.Code)
 	}
 	if counting.calls != 0 {
-		t.Errorf("usage read %d time(s) for a key with no secret", counting.calls)
+		t.Errorf("usage read %d time(s) for a key with no id", counting.calls)
 	}
 }
 

@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"9routerx/proxy/internal/auth"
+	"9routerx/proxy/internal/handlerutil"
+	"9routerx/proxy/internal/keikey"
 )
 
 // TestBackupPreservesApiKeyLimits proves a database backup carries every
@@ -80,6 +82,60 @@ func TestBackupPreservesApiKeyLimits(t *testing.T) {
 		if *c.got != c.want {
 			t.Errorf("%s = %d after restore, want %d", name, *c.got, c.want)
 		}
+	}
+}
+
+// TestBackupRoundTripsHashedKeyVerifier proves a hash-only row survives a
+// backup/restore cycle with its verifier intact. Restoring the sentinel `key`
+// alone would bring back a row that can neither authenticate nor be revealed.
+func TestBackupRoundTripsHashedKeyVerifier(t *testing.T) {
+	authTestEnv(t)
+	repo, cleanup := setupSettingsTestDB(t)
+	defer cleanup()
+
+	const secret = "sk-backup-hashed-abcdefghijklmnop"
+	verifier, err := keikey.Hash(secret)
+	if err != nil {
+		t.Fatalf("Hash: %v", err)
+	}
+	if err := repo.CreateHashedApiKey("bk3", verifier, keikey.LookupHash(secret), handlerutil.MaskAPIKey(secret), "hashed key", "m"); err != nil {
+		t.Fatalf("CreateHashedApiKey: %v", err)
+	}
+
+	router := setupTestRouter(repo)
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/database", nil)
+	req.Header.Set(cliTokenHeader, auth.CLIToken())
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("export failed: %d %s", rec.Code, rec.Body.String())
+	}
+	exported := rec.Body.Bytes()
+
+	if _, err := repo.RawDB().Exec(`DELETE FROM apiKeys`); err != nil {
+		t.Fatalf("wipe failed: %v", err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/api/settings/database", bytes.NewReader(exported))
+	req.Header.Set(cliTokenHeader, auth.CLIToken())
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("import failed: %d %s", rec.Code, rec.Body.String())
+	}
+
+	restored, err := repo.FindApiKeyByLookup(keikey.LookupHash(secret))
+	if err != nil || restored == nil {
+		t.Fatalf("restored key not resolvable by lookup: %+v, %v", restored, err)
+	}
+	if restored.ID != "bk3" {
+		t.Fatalf("restored row id = %q, want bk3", restored.ID)
+	}
+	if restored.KeyHash == nil || !keikey.Verify(secret, *restored.KeyHash) {
+		t.Fatal("restored verifier does not accept the original secret")
+	}
+	if restored.KeyDisplay == nil || *restored.KeyDisplay != handlerutil.MaskAPIKey(secret) {
+		t.Fatalf("restored keyDisplay = %v", restored.KeyDisplay)
 	}
 }
 

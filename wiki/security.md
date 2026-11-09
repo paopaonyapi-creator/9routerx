@@ -64,6 +64,11 @@ Client API keys are stored as Argon2id verifiers with a SHA-256 lookup index
 An auth cache keeps the 64 MiB-per-verification cost off the request path, so a
 busy gateway does not spend its CPU re-verifying the same key.
 
+Keys issued while `#199` kept the plaintext are still revealed to a dashboard
+session so their clients can be migrated; rotating one replaces that plaintext
+with a verifier for good. Newly issued keys cannot be revealed at all — the
+dashboard disables the reveal control and the only recovery is rotation.
+
 ## Guardrails
 
 PII and prompt-injection detection runs before a request leaves and on the

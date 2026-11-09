@@ -246,7 +246,9 @@ func (r *Repo) GetApiKeys() ([]*models.APIKey, error) {
 	return keys, nil
 }
 
-// CreateApiKey inserts a new client API key with isActive set to 1.
+// CreateApiKey inserts a new client API key with isActive set to 1. The caller
+// supplies the secret in the clear, so this is the legacy/import path; issued
+// keys go through CreateHashedApiKey instead.
 func (r *Repo) CreateApiKey(id, key, name, machineID string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	var nameVal, machineVal any
@@ -259,6 +261,30 @@ func (r *Repo) CreateApiKey(id, key, name, machineID string) error {
 	_, err := r.db.Exec(
 		`INSERT INTO apiKeys (id, key, name, machineId, isActive, createdAt) VALUES (?, ?, ?, ?, 1, ?)`,
 		id, key, nameVal, machineVal, now,
+	)
+	if err != nil {
+		return fmt.Errorf("create api key %s: %w", id, err)
+	}
+	return nil
+}
+
+// CreateHashedApiKey inserts a key whose secret exists only as an argon2id
+// verifier. The `key` column holds the per-row sentinel the UNIQUE constraint
+// needs, keyDisplay records the mask the usage ledger matches on, and one
+// statement means a row is never observable with the secret in the clear.
+func (r *Repo) CreateHashedApiKey(id, keyHash, lookupHash, keyDisplay, name, machineID string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	var nameVal, machineVal any
+	if name != "" {
+		nameVal = name
+	}
+	if machineID != "" {
+		machineVal = machineID
+	}
+	_, err := r.db.Exec(
+		`INSERT INTO apiKeys (id, key, keyHash, lookupHash, keyDisplay, name, machineId, isActive, createdAt)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+		id, hashedKeySentinel(lookupHash), keyHash, lookupHash, keyDisplay, nameVal, machineVal, now,
 	)
 	if err != nil {
 		return fmt.Errorf("create api key %s: %w", id, err)
@@ -368,7 +394,7 @@ func (r *Repo) GetApiKeyTokenUsage(rawKey string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return r.tokenUsageSince(ctx, rawKey, mark)
+	return r.tokenUsageSince(ctx, "", rawKey, mark)
 }
 
 // SetApiKeyExpiry sets expiresAt for an API key.

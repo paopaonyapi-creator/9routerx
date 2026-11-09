@@ -174,7 +174,7 @@ func (s *ConditionScanner) scanKeys(ctx context.Context, res *ScanResult) error 
 		// 1b. Token Quota
 		if k.TokenQuota != nil && *k.TokenQuota > 0 {
 			quota := *k.TokenQuota
-			used, _ := s.repo.GetApiKeyTokenUsage(k.Key)
+			used, _ := s.repo.GetApiKeyTokenUsageByID(ctx, k.ID)
 			ratio := float64(used) / float64(quota)
 			warnThreshold := 0.90
 			if k.AlertPct > 0 {
