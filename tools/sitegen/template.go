@@ -484,12 +484,106 @@ const pageTemplate = `<!doctype html>
           </div>
         </section>
 
+        <!-- The six systems, numbered the way the README's own key-features
+             list reads. Every card maps to a real README group — fallback,
+             token saver, governance, free tier, protocols, ops — so the
+             homepage alone covers the core product. -->
+        <section id="flow" aria-labelledby="flow-title">
+          <p class="landing-kicker">How it works</p>
+          <h2 id="flow-title">Keep requests moving.</h2>
+          <p class="landing-lede">
+            Six systems sit between your CLI and the bill &mdash; the same six the README
+            documents in full.
+          </p>
+          <div class="flow-grid">
+            <article class="flow-card">
+              <span class="flow-num" aria-hidden="true">01</span>
+              <h3>Automatic fallback</h3>
+              <p>
+                Auto 3-Tier Fallback walks <strong>subscription &rarr; cheap &rarr; free</strong> on
+                429s, quota exhaustion and 5xx &mdash; with combo strategies (fallback, round-robin,
+                sticky, capacity, fusion), a circuit breaker and model-health probes keeping the
+                session alive.
+              </p>
+              <div class="flow-mock mock-chain" aria-hidden="true">
+                <span>subscription</span><span class="mock-arrow">&rarr;</span><span>cheap</span><span class="mock-arrow">&rarr;</span><span>free</span>
+              </div>
+            </article>
+            <article class="flow-card">
+              <span class="flow-num" aria-hidden="true">02</span>
+              <h3>Token Saver</h3>
+              <p>
+                RTK compression cuts tool-output tokens by <strong>20&ndash;40%</strong>, with
+                50+ per-tool CLI filters, GCF/Tabular Headroom, Context Squeezer and Tool-Call
+                Repair riding along.
+              </p>
+              <div class="flow-mock mock-savings" aria-hidden="true">
+                <code>context 18,400 &rarr; 11,040</code>
+                <span class="mock-saved">saved ~40%</span>
+              </div>
+            </article>
+            <article class="flow-card">
+              <span class="flow-num" aria-hidden="true">03</span>
+              <h3>Governance per key</h3>
+              <p>
+                Daily cost ceilings with hard cutoff checked at request start, rate limits, IP
+                whitelists, per-key system prompts, plan templates &mdash; plus guardrails with PII
+                masking and an audit log.
+              </p>
+              <div class="flow-mock" aria-hidden="true">
+                <code>$0.00 this month &middot; 50 req/min</code>
+              </div>
+            </article>
+            <article class="flow-card">
+              <span class="flow-num" aria-hidden="true">04</span>
+              <h3>Free tier &amp; keyless</h3>
+              <p>
+                <strong>29</strong> free-tier providers and <strong>248</strong> free models,
+                <strong>24</strong> of them keyless &mdash; zero-login via opencode and gemini-web;
+                antigravity needs a one-time Google login.
+              </p>
+              <div class="flow-mock mock-keyless" aria-hidden="true">
+                <code>$0.00</code>
+                <span class="mock-chip">oc/</span>
+                <span class="mock-chip">antigravity (login once)</span>
+              </div>
+            </article>
+            <article class="flow-card">
+              <span class="flow-num" aria-hidden="true">05</span>
+              <h3>One endpoint, multi-protocol</h3>
+              <p>
+                OpenAI Chat Completions, Claude Messages, Gemini and the Responses API on
+                <code>/v1</code> &mdash; Claude Code, Codex, Cursor, Cline and Copilot all point at
+                the same port.
+              </p>
+              <div class="flow-mock" aria-hidden="true">
+                <code>POST /v1/chat/completions</code>
+                <span class="mock-ok">200 OK</span>
+              </div>
+            </article>
+            <article class="flow-card">
+              <span class="flow-num" aria-hidden="true">06</span>
+              <h3>Ops &amp; performance</h3>
+              <p>
+                Semantic cache and prompt cache, logging with a payload inspector, tracing, uptime,
+                security log, webhooks and a Telegram bot &mdash; A2A + MCP server, one Go binary
+                with tray, tunnel and Docker.
+              </p>
+              <div class="flow-mock mock-ops" aria-hidden="true">
+                <span class="mock-chip">cache hit</span>
+                <span class="mock-chip">trace</span>
+                <span class="mock-chip">mcp</span>
+              </div>
+            </article>
+          </div>
+        </section>
+
         <section aria-labelledby="features-title">
           <p class="landing-kicker">What you get</p>
           <h2 id="features-title">Four systems between your CLI and the bill</h2>
           <p class="landing-lede">
-            The condensed version of the feature list &mdash; the README below carries the full
-            inventory, and the wiki documents every knob.
+            The condensed version of the feature list &mdash; the full inventory lives in the
+            <a href="readme.html">README</a>, and the wiki documents every knob.
           </p>
           <div class="feature-grid">
             <article class="feature-card">
