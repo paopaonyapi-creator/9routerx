@@ -9,13 +9,13 @@
     "windows_amd64": "https://github.com/yanstd888/9routerx/releases/download/v1.1.4/9routerx-windows-amd64.exe"
   },
   "sha256s": {
-    "darwin_amd64": "d1fe529193b18c096facba845c0aa3a71c5d222550028b471400a74851776737",
-    "darwin_arm64": "0b4fd93ad699c0ef1772896838ec75dd196369c71e938180975e22ec5af4e243",
-    "linux_amd64": "2818154c926a4779a92f5ca002c697147e1db9b25172e0c6270ada99e6d11fe4",
-    "linux_arm64": "5ba9a7a3e36184049eeb56a08c2b2fd977c57edc76a8978e5d0600bd83e1ccfa",
-    "windows_amd64": "b0072cf77ffd0fb86618b04676e9889fb0f77940b9cb2e614ba0e2b81df330e7"
+    "darwin_amd64": "79cf2cab25ff6cd11eb6d13ea092b5e89ddf01304ca256b91352b842d2143140",
+    "darwin_arm64": "67c7952af6a7b39ace49581c9d3a09d30335f632c8a35217175ec4e0b20ace08",
+    "linux_amd64": "63e26810b62255f66aad6b9fb9a88caab28e442c74197e6641a9dd4bb915ade9",
+    "linux_arm64": "d5ba8f08b056fc777bcae3e412728f73c411e5017dc8df75239d5fe188b5c191",
+    "windows_amd64": "1dcb677f493b55d36e092f044e1b0dcac03470758a49450e13b0354da5940e07"
   },
-  "releaseNotes": "\n\n### Added\n\n- **llms.txt** — the Pages site now publishes the LLM-crawler site map at\n  `https://yanstd888.github.io/9routerx/llms.txt`: every documentation page,\n  the registry facts (155 providers, 248 free models / 24 keyless) and the\n  quick facts AI assistants need to drive the gateway.\n- **JSON-LD structured data** — the homepage carries a schema.org\n  SoftwareApplication block (name, platforms, description, download URL) so\n  search engines render richer results for the project.\n\n### Changed\n\n- **npm package metadata** — the `9routerx` package description and keywords\n  now describe what the gateway actually does (token saver, Claude Code /\n  Cursor / Cline / Codex routing, keyless free models, MCP Server, A2A) instead\n  of five generic words.\n",
-  "releaseUrl": "https://github.com/yanstd888/9routerx/releases/tag/v1.1.3",
-  "publishedAt": "2026-11-08T16:56:58Z"
+  "releaseNotes": "\n\n### Security\n\n- **Dashboard management is operator-only** — client engine keys can no longer\n  create, rotate, delete or re-policy API keys, change settings or trigger\n  updates; those routes answer `403` unless the caller holds a dashboard session\n  or the local CLI token. Two read-only metadata endpoints\n  (`/api/providers/catalog`, `/api/models/caps`) still accept an engine key.\n- **API keys are stored hashed again** — create and rotate keep only an\n  Argon2id verifier plus a SHA-256 lookup index; the secret is returned once and\n  never written to the database. Rows from the plaintext era stay revealable\n  until they are rotated, and spend accounting follows the row so quotas,\n  budgets and the ledger prune keep working across a rotation.\n- **Locality no longer trusts the Host header** — the default-password guard and\n  provider-node exceptions classify callers by socket peer (and the trusted\n  client-IP resolver for proxied logins), so a spoofed `Host: 127.0.0.1` gains\n  nothing.\n- **Updater is decompression-bomb-proof** — release archives are capped at 64\n  entries / 256 MiB per entry / 512 MiB expanded, ZIP symlinks are refused, and\n  the extracted bytes must parse as an executable for the running platform\n  (ELF / Mach-O / PE) before anything replaces the binary.\n- **Fail-closed defaults** — an enabled A2A server without a configured token\n  refuses every request; the gateway binds `127.0.0.1` unless `HOST` says\n  otherwise; key-reveal responses carry no-store headers and an audit line.\n- **Plaintext storage is announced** — without `ROUTER_MASTER_KEY`, the boot\n  log and the dashboard both say credential encryption is OFF.\n\n### Changed\n\n- **403 on operator-only routes** carries the explicit `forbidden` error code\n  instead of the quota-shaped one the status mapping produced.\n- **Budget cutoff wording** — README, wiki and the Plans dialog now say the\n  ceiling is checked when a request starts (a request already in flight can\n  overshoot slightly) instead of implying a continuous limit.\n",
+  "releaseUrl": "https://github.com/yanstd888/9routerx/releases/tag/v1.1.4",
+  "publishedAt": "2026-11-09T16:31:29Z"
 }
