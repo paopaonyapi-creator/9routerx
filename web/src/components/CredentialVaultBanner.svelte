@@ -29,7 +29,7 @@
 {#if status && !status.enabled}
   <div
     class="mb-4 flex items-start gap-3 rounded-lg border border-amber-400/50 bg-amber-500/10 px-4 py-3 text-amber-800 dark:text-amber-300"
-    role="status"
+    role="alert"
   >
     <ShieldAlert class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
     <div class="text-xs leading-relaxed">
