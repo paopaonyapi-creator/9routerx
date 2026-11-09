@@ -22,23 +22,28 @@ import type { Page } from '@playwright/test'
 
 import { startDashboard, type Dashboard } from './harness'
 
-/** The two agents issue #165 asked for. */
+/** The two agents issue #165 asked for. `credentialLine` is what the config
+ * block names the credential by — pi takes a literal, omp reads an env var —
+ * because that is the only line the card can keep now that the secret itself is
+ * not readable from the dashboard. */
 const AGENTS = [
-  { card: 'Pi', id: 'pi', configPath: '.pi/agent/models.json' },
-  { card: 'Oh My Pi', id: 'omp', configPath: '.omp/agent/models.yml' },
+  { card: 'Pi', id: 'pi', configPath: '.pi/agent/models.json', credentialLine: '<your-9routerx-api-key>' },
+  { card: 'Oh My Pi', id: 'omp', configPath: '.omp/agent/models.yml', credentialLine: '9ROUTERX_API_KEY' },
 ] as const
 
 let app: Dashboard
 let page: Page
 
 let seededKey = ''
+let seededMask = ''
 
 beforeAll(async () => {
   app = await startDashboard(20419)
   page = app.page
   // A fresh instance has no key, so the card would render its placeholder and
-  // every paste-shaped assertion below would pass against the placeholder
-  // rather than against a real credential. Mint one first.
+  // the assertions below would be about the empty case rather than the one a
+  // real instance shows. Mint one first — and note what the list gives back:
+  // the mask, because the secret lives only in the create response.
   seededKey = await page.evaluate(async () => {
     const res = await fetch('/api/keys', {
       method: 'POST',
@@ -46,6 +51,11 @@ beforeAll(async () => {
       body: JSON.stringify({ name: 'E2E Pi Snippet' }),
     })
     return (await res.json()).key as string
+  })
+  seededMask = await page.evaluate(async () => {
+    const res = await fetch('/api/keys', { credentials: 'include' })
+    const list = (await res.json()) as { keyDisplay?: string }[]
+    return list[0]?.keyDisplay ?? ''
   })
   await page.goto(`${app.baseURL}/dashboard/cli-tools`)
 }, 20_000)
@@ -69,7 +79,7 @@ async function openTool(name: string) {
 }
 
 describe('CLI Tools page lists the pi / Oh My Pi agents (#165)', () => {
-  for (const { card: cardName, id, configPath } of AGENTS) {
+  for (const { card: cardName, id, configPath, credentialLine } of AGENTS) {
     test(`${cardName} has a card backed by a real install detector`, async () => {
       await page.goto(`${app.baseURL}/dashboard/cli-tools`)
 
@@ -86,7 +96,7 @@ describe('CLI Tools page lists the pi / Oh My Pi agents (#165)', () => {
       await card(cardName).waitFor()
     })
 
-    test(`${cardName} shows a pasteable snippet pointing at the live gateway`, async () => {
+    test(`${cardName} points at the live gateway and explains an unreadable key`, async () => {
       const dialog = await openTool(cardName)
       const text = (await dialog.innerText()).replace(/\s+/g, ' ')
 
@@ -96,11 +106,14 @@ describe('CLI Tools page lists the pi / Oh My Pi agents (#165)', () => {
       expect(text).toMatch(/openai-completions/)
       // Both lanes are served; the fallback for a model missing from /model.
       expect(text).toContain('openai-responses')
-      // Never a placeholder: the instance has a key, so a pasteable card must
-      // carry it. This is the guard that failed while a literal key was
-      // compiled into the bundle as a fallback for the empty case.
-      expect(text).not.toContain('<your-9routerx-api-key>')
-      expect(text).toContain(seededKey)
+      // The secret is stored hashed and never reaches this page, so the card
+      // keeps the credential line it has always carried and says why — and
+      // names the key by its mask rather than pretending the instance has none.
+      expect(text).toContain(credentialLine)
+      expect(text).not.toContain(seededKey)
+      expect(text).toContain(seededMask)
+      expect(text).toContain('stores API keys hashed')
+      expect(text).not.toContain('No API key exists yet')
       expect(text).not.toContain('localhost:20128')
     })
   }

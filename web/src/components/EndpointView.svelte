@@ -1475,9 +1475,9 @@
       <div class="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 space-y-1 text-amber-700 dark:text-amber-300">
         <p class="text-sm font-bold">Save these keys now!</p>
         <p class="text-xs leading-relaxed">
-          This is the only time the secrets are shown. Each one can be revealed again from the
-          table below, but anyone who reaches this dashboard can read it there — treat the file
-          you download as a credential.
+          {t(
+            'This is the only time the secrets are shown — each row keeps a hash, not the key, so the table below cannot show it again. Treat the file you download as a credential.'
+          )}
         </p>
       </div>
 
@@ -1545,8 +1545,9 @@
       <div class="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 space-y-1 text-amber-700 dark:text-amber-300">
         <p class="text-sm font-bold">Save this key now!</p>
         <p class="text-xs leading-relaxed">
-          This key can be revealed and copied again from the table below, but treat it as a
-          credential: anyone who reaches this dashboard can read it.
+          {t(
+            'This is the only time it is shown: the row keeps a hash, so the table below can show the mask but never the key again. If you lose it, rotate the key for a new one.'
+          )}
         </p>
       </div>
 

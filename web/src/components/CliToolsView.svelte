@@ -23,6 +23,7 @@
   import Card from '../lib/ui/Card.svelte'
   import { copyToClipboard } from '../lib/clipboard'
   import { api, type APIKey } from '../api/client'
+  import { t } from '../lib/i18n.svelte'
   import HermesToolCard from './cli-tools/HermesToolCard.svelte'
 
   interface Props {
@@ -65,7 +66,22 @@
   // the provider as unauthenticated) and the card says why it is a placeholder.
   const API_KEY_PLACEHOLDER = '<your-9routerx-api-key>'
   let snippetApiKey = $derived(apiKeys[0]?.key || API_KEY_PLACEHOLDER)
-  let noApiKey = $derived(!apiKeys[0]?.key)
+
+  // The note under a card's snippet has three cases, not two: no key at all, a
+  // key whose secret is stored hashed (item 5) and therefore cannot be read
+  // back here, and a legacy row that still holds its plaintext.
+  //
+  // The hashed case names the key by its mask rather than pretending the
+  // instance is empty, and keeps the placeholder in the config: a mask pasted
+  // as an apiKey would authenticate against nothing while looking deliberate.
+  const HASHED_KEY_NOTE =
+    'This instance stores API keys hashed, so the secret cannot be shown here. Paste the secret you saved when the key was created, or rotate it in API Keys to receive a new one once. Key: {key}'
+  let firstKeyLabel = $derived(apiKeys[0]?.keyDisplay || apiKeys[0]?.name || apiKeys[0]?.id || '')
+  function keyNote(none: string, ready: string): string {
+    if (!apiKeys.length) return none
+    if (apiKeys[0]?.key) return ready
+    return t(HASHED_KEY_NOTE).replace('{key}', firstKeyLabel)
+  }
 
   async function loadStatuses() {
     isLoading = true
@@ -443,9 +459,10 @@
       instructions: [
         `Add a 9RouterX provider to ~/.pi/agent/models.json (Windows: %USERPROFILE%\\.pi\\agent\\models.json):`,
         `{"providers":{"9router":{"baseUrl":"${localOrigin}/v1","api":"openai-completions","apiKey":"${snippetApiKey}","models":[{"id":"kr/claude-sonnet-4.5","name":"9RouterX kr/claude-sonnet-4.5","reasoning":true,"contextWindow":200000,"maxTokens":64000}]}}}`,
-        noApiKey
-          ? `No API key exists yet — open API Keys, create one, then reopen this card. Pasting the line as-is will send "<your-9routerx-api-key>" upstream and get 401.`
-          : `Run 'pi', then /model to pick the model — models.json is re-read without a restart.`,
+        keyNote(
+          `No API key exists yet — open API Keys, create one, then reopen this card. Pasting the line as-is will send "<your-9routerx-api-key>" upstream and get 401.`,
+          `Run 'pi', then /model to pick the model — models.json is re-read without a restart.`,
+        ),
         `If the model does not show up, set "api" to "openai-responses"; the gateway serves both lanes.`,
         `List every routable id with: curl -s ${localOrigin}/v1/models -H "Authorization: Bearer ${snippetApiKey}"`,
       ],
@@ -461,9 +478,10 @@
       instructions: [
         `Add a 9RouterX provider to ~/.omp/agent/models.yml (profiles live in ~/.omp/profiles/<name>/agent/):`,
         `providers:\n  9router:\n    baseUrl: ${localOrigin}/v1\n    api: openai-completions\n    authHeader: true\n    apiKey: 9ROUTERX_API_KEY\n    models:\n      - id: kr/claude-sonnet-4.5\n        name: 9RouterX kr/claude-sonnet-4.5\n        reasoning: true\n        contextWindow: 200000\n        maxTokens: 64000`,
-        noApiKey
-          ? `No API key exists yet — open API Keys, create one, then reopen this card; 9ROUTERX_API_KEY has to be set to that key before 'omp' can authenticate.`
-          : `export 9ROUTERX_API_KEY="${snippetApiKey}" before starting 'omp' — the key is read from the environment first, and an unset variable is sent as its literal name.`,
+        keyNote(
+          `No API key exists yet — open API Keys, create one, then reopen this card; 9ROUTERX_API_KEY has to be set to that key before 'omp' can authenticate.`,
+          `export 9ROUTERX_API_KEY="${snippetApiKey}" before starting 'omp' — the key is read from the environment first, and an unset variable is sent as its literal name.`,
+        ),
         `Run 'omp', then /model to select the model. 'omp models' lists everything the gateway exposes.`,
         `Use api: openai-responses instead if a model does not stream correctly over Chat Completions.`,
       ],
@@ -479,9 +497,10 @@
       instructions: [
         `Add 9RouterX to your Crush config in ~/.config/crush/crush.json:`,
         `{"providers":{"9router":{"type":"openai-compat","base_url":"${localOrigin}/v1","api_key":"${snippetApiKey}","models":["claude-sonnet-4-6"]}}}`,
-        noApiKey
-          ? `No API key exists yet — create one in API Keys first, then update "api_key".`
-          : `Point your active model to 9router in crush.json or pass --provider 9router on startup.`,
+        keyNote(
+          `No API key exists yet — create one in API Keys first, then update "api_key".`,
+          `Point your active model to 9router in crush.json or pass --provider 9router on startup.`,
+        ),
         `List available models: curl -s ${localOrigin}/v1/models -H "Authorization: Bearer ${snippetApiKey}"`,
       ],
     },
@@ -496,9 +515,10 @@
       instructions: [
         `Configure 9RouterX endpoint under the [openai] section in ~/.forge/config.toml:`,
         `[openai]\nbase_url = "${localOrigin}/v1"\napi_key = "${snippetApiKey}"`,
-        noApiKey
-          ? `No API key exists yet — create one in API Keys first, then update api_key.`
-          : `Run 'forge' to start working with models routed through 9RouterX.`,
+        keyNote(
+          `No API key exists yet — create one in API Keys first, then update api_key.`,
+          `Run 'forge' to start working with models routed through 9RouterX.`,
+        ),
         `Optionally override model via --model flag or config.toml default_model setting.`,
       ],
     },
@@ -513,9 +533,10 @@
       instructions: [
         `Add 9RouterX gateway configuration to ~/.smelt/config.json:`,
         `{"baseUrl":"${localOrigin}/v1","apiKey":"${snippetApiKey}","_managedBy":"9router"}`,
-        noApiKey
-          ? `No API key exists yet — create one in API Keys first, then update "apiKey".`
-          : `Launch 'smelt' in your workspace directory to begin.`,
+        keyNote(
+          `No API key exists yet — create one in API Keys first, then update "apiKey".`,
+          `Launch 'smelt' in your workspace directory to begin.`,
+        ),
         `Compatible with standard OpenAI completions and Responses endpoints.`,
       ],
     },
@@ -530,9 +551,10 @@
       instructions: [
         `Add 9RouterX endpoint under [openai] in ~/.codewhale/config.toml:`,
         `[openai]\nbase_url = "${localOrigin}/v1"\napi_key = "${snippetApiKey}"`,
-        noApiKey
-          ? `No API key exists yet — create one in API Keys first, then update api_key.`
-          : `Run 'codewhale' to begin terminal-assisted coding workflows.`,
+        keyNote(
+          `No API key exists yet — create one in API Keys first, then update api_key.`,
+          `Run 'codewhale' to begin terminal-assisted coding workflows.`,
+        ),
         `Verify connection with: codewhale check`,
       ],
     },
@@ -548,7 +570,15 @@
     })
   )
 
-  let effectiveApiKey = $derived(apiKeys[0]?.key || '')
+  // The header's "Active Token". A hash-only key is identified by the mask the
+  // server sent: the plaintext never reached this page, so printing a slice of
+  // a placeholder would read as a credential that does not exist.
+  let activeTokenLabel = $derived.by(() => {
+    if (!apiKeys.length) return t('none created')
+    const stored = apiKeys[0]
+    if (stored?.key) return `${stored.key.slice(0, 10)}••••`
+    return stored?.keyDisplay || t('stored hashed, not readable')
+  })
 
   function copyText(text: string, id: string) {
     copyToClipboard(text)
@@ -917,7 +947,7 @@
       <div class="flex items-center justify-between pt-3 border-t border-border">
         <div class="flex items-center gap-1.5 text-xs text-text-subtle font-mono">
           <Key class="w-3.5 h-3.5 text-brand-500" />
-          <span>Active Token: {noApiKey ? 'none created' : `${effectiveApiKey.slice(0, 10)}••••`}</span>
+          <span>Active Token: {activeTokenLabel}</span>
         </div>
 
         <button
