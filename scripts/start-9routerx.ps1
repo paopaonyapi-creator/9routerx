@@ -10,8 +10,8 @@ if (-not (Test-Path -LiteralPath $exe)) {
     throw "9routerx.exe not found at $exe"
 }
 
-# Resolve port from .env or default 888
-$port = 888
+# Resolve port from .env or the code default (internal/config DefaultPort)
+$port = 20128
 $envFile = Join-Path $repo '.env'
 if (Test-Path -LiteralPath $envFile) {
     $match = Select-String -Path $envFile -Pattern '^PORT\s*=\s*(\d+)' | Select-Object -First 1
