@@ -771,7 +771,7 @@ Model:    antigravity/gemini-3.7-flash-medium
                 Release notes, setup tips and support (Bahasa Indonesia) at the AI Club channel
                 and group.
               </p>
-              <a class="btn btn-ghost" href="tg">Join @aiclub_id</a>
+              <a class="btn btn-ghost" href="https://t.me/aiclub_id">Join @aiclub_id</a>
             </article>
             <article class="community-card">
               <h3>Contribute</h3>
@@ -1046,7 +1046,7 @@ const colophon = `    <footer class="colophon">
           <div class="colophon-col">
             <h3>Community</h3>
             <ul>
-              <li><a href="tg">Telegram group</a></li>
+              <li><a href="https://t.me/aiclub_id">Telegram group</a></li>
               <li><a href="https://github.com/{{ .Repo }}">GitHub repo</a></li>
               <li><a href="https://github.com/{{ .Repo }}/issues">GitHub Issues</a></li>
             </ul>
@@ -1143,7 +1143,7 @@ var readmeTemplate = `<!doctype html>
           <a href="installation.html">Wiki</a>
           <a href="https://github.com/{{ .Repo }}">Repository</a>
           <a href="https://github.com/{{ .Repo }}/releases">Releases</a>
-          <a href="tg">Telegram group</a>
+          <a href="https://t.me/aiclub_id">Telegram group</a>
         </nav>
       </div>
     </header>
