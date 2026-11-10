@@ -1061,8 +1061,11 @@ const colophon = `    <footer class="colophon">
       </div>
       <!-- The finale: an oversized wordmark cropped by the page edge, with the
            dashboard's accent glow rising behind it. Decorative only — a screen
-           reader already met the brand in the brand row above. -->
-      <div class="colophon-finale" aria-hidden="true">9RouterX</div>
+           reader already met the brand in the brand row above. The wordmark is
+           drawn by the ::after pseudo-element alone: real text content here
+           would render a second, small copy of the brand between the legal
+           line and the glow. -->
+      <div class="colophon-finale" aria-hidden="true"></div>
     </footer>`
 
 // readmeTemplate is the chrome for readme.html — the full README on its own
