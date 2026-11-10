@@ -1682,7 +1682,9 @@ h4 {
 .colophon-legal {
   grid-column: 1 / -1;
   margin: 0;
-  padding: 1.5rem 0 1rem;
+  /* The three footer blocks breathe at one rhythm: the grid gap above, one
+     consistent band below the legal line, then the finale. */
+  padding: 2.5rem 0 0;
   color: var(--text-subtle);
   font-size: 0.78rem;
 }
@@ -1702,6 +1704,7 @@ h4 {
    hero-aura language — and completely static under prefers-reduced-motion. */
 .colophon-finale {
   position: relative;
+  margin-top: 3rem;
   height: clamp(5.5rem, 18vw, 13rem);
   overflow: hidden;
   pointer-events: none;
