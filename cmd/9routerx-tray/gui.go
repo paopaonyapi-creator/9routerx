@@ -23,6 +23,7 @@ import (
 
 	"github.com/getlantern/systray"
 
+	"9routerx/proxy/internal/hideconsole"
 	"9routerx/proxy/internal/tray"
 )
 
@@ -112,7 +113,12 @@ func runMenu(actions tray.Actions, port int) {
 	}()
 
 	refresh(m, actions)
-	ticker := time.NewTicker(time.Second)
+	// Five seconds instead of one: each tick spawns a schtasks query plus a
+	// helper probe through the service package, and doing that every second
+	// churns CPU and disk for state a tray menu does not need fresh to the
+	// second. Menu-initiated changes call refresh immediately, so only
+	// changes made outside the tray (CLI, dashboard) can lag by a tick.
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
 		refresh(m, actions)
@@ -174,5 +180,6 @@ func openDashboard(port int) {
 	default:
 		cmd = exec.Command("xdg-open", url)
 	}
+	hideconsole.Apply(cmd)
 	_ = cmd.Start()
 }

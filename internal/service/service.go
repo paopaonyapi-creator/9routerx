@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"9routerx/proxy/internal/hideconsole"
 	"9routerx/proxy/internal/proc"
 )
 
@@ -231,11 +232,11 @@ func hasCron() bool {
 // It is a var so tests can observe and stub supervisor calls without touching
 // the real init system.
 var run = func(name string, args ...string) (string, error) {
-	out, err := exec.Command(name, args...).CombinedOutput()
+	out, err := hideconsole.CombinedOutput(name, args...)
 	if err != nil {
-		return string(out), fmt.Errorf("service: %s %s: %w: %s", name, strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		return out, fmt.Errorf("service: %s %s: %w: %s", name, strings.Join(args, " "), err, strings.TrimSpace(out))
 	}
-	return string(out), nil
+	return out, nil
 }
 
 // commandLine joins the executable and args for display and for unit files
