@@ -1601,7 +1601,9 @@ h4 {
 .colophon-inner {
   position: relative;
   z-index: 1;
-  max-width: 64rem;
+  /* The masthead's own container: the footer's right edge must line up with
+     the header's, or the link columns look like they stop short of the page. */
+  max-width: 76rem;
   margin: 0 auto;
   padding: 2.75rem 1.25rem 0;
   display: grid;
