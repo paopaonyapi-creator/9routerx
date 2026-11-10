@@ -1,0 +1,2 @@
+# Golden fixtures encode LF-delimited wire formats and section markers.
+*.golden text eol=lf

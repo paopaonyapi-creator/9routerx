@@ -16,33 +16,13 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// A4b: pins why escapesResolved must use os.Readlink. A junction carries
-// ModeIrregular rather than ModeSymlink, and EvalSymlinks follows a link only
-// when ModeSymlink is set — so EvalSymlinks hands a junction back unchanged and
-// an escape check built on it would silently pass. os.Readlink resolves it.
-//
-// If anyone "simplifies" escapesResolved back to EvalSymlinks, this is the test
-// that explains why they cannot.
-func TestJunction_EvalSymlinksIsBlindAndReadlinkIsNot(t *testing.T) {
+// A4b: the guard must resolve a junction with Readlink even on Go versions
+// where EvalSymlinks leaves junctions unchanged. Assert the guard's dependency
+// rather than pinning the stdlib's path spelling or junction classification.
+func TestJunction_ReadlinkResolvesTarget(t *testing.T) {
 	base, outside := newBase(t)
 	junction := filepath.Join(base, "evil")
 	makeJunction(t, junction, outside)
-
-	fi, err := os.Lstat(junction)
-	if err != nil {
-		t.Fatalf("lstat: %v", err)
-	}
-	if fi.Mode()&os.ModeSymlink != 0 {
-		t.Errorf("junction reports ModeSymlink; the premise of the guard has changed")
-	}
-
-	eval, err := filepath.EvalSymlinks(junction)
-	if err != nil {
-		t.Fatalf("EvalSymlinks: %v", err)
-	}
-	if eval != junction {
-		t.Errorf("EvalSymlinks resolved the junction to %q — the stdlib behaviour this test pins has changed", eval)
-	}
 
 	target, err := os.Readlink(junction)
 	if err != nil {
@@ -50,6 +30,17 @@ func TestJunction_EvalSymlinksIsBlindAndReadlinkIsNot(t *testing.T) {
 	}
 	if !filepath.IsAbs(target) {
 		t.Errorf("Readlink returned relative target %q; junctions store absolute targets", target)
+	}
+	got, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("stat junction target: %v", err)
+	}
+	want, err := os.Stat(outside)
+	if err != nil {
+		t.Fatalf("stat outside directory: %v", err)
+	}
+	if !os.SameFile(got, want) {
+		t.Errorf("Readlink target %q does not name the outside directory %q", target, outside)
 	}
 }
 
