@@ -108,12 +108,11 @@ describe('usage chart accessibility', () => {
       // bucket's label. The wait is a poll rather than a read because the
       // focus handler updates Svelte state and the DOM settles on the next
       // microtask.
-      const tooltip = page.getByRole('status')
+      // The update banner also has role=status. Keep keyboard assertions
+      // scoped to the chart even when a new release is available.
+      const tooltip = page.getByRole('img', { name: 'Usage trend chart' }).locator('..').getByRole('status')
       await tooltip.waitFor()
-      await page.waitForFunction(
-        (label) => document.querySelector('[role="status"]')?.textContent?.includes(label) ?? false,
-        CHART_FIXTURE[0].label,
-      )
+      await tooltip.getByText(CHART_FIXTURE[0].label, { exact: true }).waitFor()
       expect(await tooltip.innerText()).toContain(CHART_FIXTURE[0].label)
 
       // A tooltip reachable only by hovering is unreadable to anyone driving
@@ -127,17 +126,11 @@ describe('usage chart accessibility', () => {
       // again and ArrowRight becomes idempotent after one step — a single
       // press from one start cannot tell that apart from a working walk.
       await firstPoint.press('ArrowRight')
-      await page.waitForFunction(
-        (label) => document.querySelector('[role="status"]')?.textContent?.includes(label) ?? false,
-        CHART_FIXTURE[1].label,
-      )
+      await tooltip.getByText(CHART_FIXTURE[1].label, { exact: true }).waitFor()
       expect(await tooltip.innerText()).toContain(CHART_FIXTURE[1].label)
 
       await page.keyboard.press('ArrowRight')
-      await page.waitForFunction(
-        (label) => document.querySelector('[role="status"]')?.textContent?.includes(label) ?? false,
-        CHART_FIXTURE[2].label,
-      )
+      await tooltip.getByText(CHART_FIXTURE[2].label, { exact: true }).waitFor()
       expect(await tooltip.innerText()).toContain(CHART_FIXTURE[2].label)
 
       const focusedLabel = await page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? '')

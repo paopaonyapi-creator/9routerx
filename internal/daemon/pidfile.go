@@ -90,6 +90,8 @@ func parseClaim(raw string) claim {
 	if len(fields) < 2 {
 		return claim{pid: pid}
 	}
+	// Only the first field is a token. The remainder is an executable path,
+	// which can contain spaces (for example a Windows user profile).
 	return claim{pid: pid, exePath: strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(raw), fields[0]))}
 }
 

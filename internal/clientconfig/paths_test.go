@@ -88,7 +88,9 @@ func TestPathResolution(t *testing.T) {
 					t.Errorf("file %d: %q is not absolute", i, f.Path)
 				}
 				for _, bad := range []string{"~", "$HOME", "%USERPROFILE%", "${"} {
-					if strings.Contains(f.Path, bad) {
+					// A tilde inside an absolute Windows path can be a valid
+					// 8.3 name, such as ADPAO~1, rather than a home placeholder.
+					if (bad == "~" && strings.HasPrefix(f.Path, "~")) || (bad != "~" && strings.Contains(f.Path, bad)) {
 						t.Errorf("file %d: %q still holds %q", i, f.Path, bad)
 					}
 				}

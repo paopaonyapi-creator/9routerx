@@ -95,6 +95,16 @@ func TestParseClaim(t *testing.T) {
 			want: claim{pid: 20130},
 		},
 		{
+			name: "executable path with spaces is preserved",
+			raw:  "20130 C:/Users/AD PAO/My Tools/9routerx.exe\r\n",
+			want: claim{pid: 20130, exePath: "C:/Users/AD PAO/My Tools/9routerx.exe"},
+		},
+		{
+			name: "tab separator preserves executable path",
+			raw:  "  20130\t/opt/my tools/9routerx\n",
+			want: claim{pid: 20130, exePath: "/opt/my tools/9routerx"},
+		},
+		{
 			name: "missing file is not a claim",
 			raw:  "",
 			want: claim{},
