@@ -345,6 +345,7 @@ func SetupDashboardRoutes(r chi.Router, repo *db.Repo, chatH *chat.ChatHandler) 
 	r.Put("/api/plans/{id}", dashH.HandleUpdatePlan)
 	r.Delete("/api/plans/{id}", dashH.HandleDeletePlan)
 	r.Get("/api/plans/{id}/keys", dashH.HandlePlanKeys)
+	r.Post("/api/plans/{id}/assign", dashH.HandleAssignPlan)
 	r.Get("/api/metrics", observ.Handler().ServeHTTP)
 	r.Get("/api/vault/status", dashH.HandleGetVaultStatus)
 	r.Get("/api/guardrails/policies", dashH.HandleGetGuardrailPolicies)
@@ -777,10 +778,14 @@ func SetupServerRouter(r chi.Router, repo *db.Repo, ts *TokenSaverConfig) *chat.
 	// windows already depend on, is pinned at boot.
 	defaults := func() middleware.Limits {
 		d := repo.GetRateLimitDefaults()
-		if !d.Enabled {
-			return middleware.Limits{}
+		var lim middleware.Limits
+		if d.Enabled {
+			lim = middleware.Limits{RPM: d.RPM, TPM: d.TPM, Concurrency: d.Concurrency}
 		}
-		return middleware.Limits{RPM: d.RPM, TPM: d.TPM, Concurrency: d.Concurrency}
+		if s, err := repo.GetSettings(); err == nil && s != nil {
+			lim.Budget.Fallback = s.BudgetFallbackEnabled
+		}
+		return lim
 	}
 	guardrailStore := guardrails.NewStore(repo.RawDB())
 	// One switch for both taps. It reads the settings row per request, which is

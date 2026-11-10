@@ -180,6 +180,41 @@ func (r *Repo) SetApiKeyPlan(keyID, planID string) error {
 	return nil
 }
 
+// AssignPlanToKeys bulk-assigns a plan to multiple API keys.
+func (r *Repo) AssignPlanToKeys(planID string, keyIDs []string) error {
+	if r == nil || r.db == nil {
+		return fmt.Errorf("plans: assign: nil repo")
+	}
+	if len(keyIDs) == 0 {
+		return nil
+	}
+	if planID != "" {
+		if _, err := r.GetPlan(planID); err != nil {
+			return fmt.Errorf("plans: assign: %w", err)
+		}
+	}
+	var val any = planID
+	if planID == "" {
+		val = nil
+	}
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("plans: assign begin: %w", err)
+	}
+	defer tx.Rollback()
+	stmt, err := tx.Prepare(`UPDATE apiKeys SET planId = ? WHERE id = ?`)
+	if err != nil {
+		return fmt.Errorf("plans: assign prepare: %w", err)
+	}
+	defer stmt.Close()
+	for _, id := range keyIDs {
+		if _, err := stmt.Exec(val, id); err != nil {
+			return fmt.Errorf("plans: assign key %s: %w", id, err)
+		}
+	}
+	return tx.Commit()
+}
+
 // UpdatePlan modifies an existing plan's mutable fields.
 func (r *Repo) UpdatePlan(p Plan) error {
 	if r == nil || r.db == nil || p.ID == "" {

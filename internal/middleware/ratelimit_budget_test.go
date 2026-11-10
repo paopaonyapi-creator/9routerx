@@ -69,9 +69,9 @@ func planWithBudget(micros int64, period string) db.Plan {
 	}
 }
 
-// TestBudgetRefusesExhaustedKey proves the per-period ceiling answers 402 once
-// the measured spend reaches it, and that the response names the axis and the
-// period reset so a client can back off for the right length of time.
+// TestBudgetRefusesExhaustedKey proves the per-period ceiling answers 429 once
+// the measured spend reaches it, without exposing the ceiling or spend.
+// The period reset lets a client back off for the right length of time.
 func TestBudgetRefusesExhaustedKey(t *testing.T) {
 	rl := NewRateLimiter(time.Minute)
 	rl.SetBudgetReader(&stubBudget{spend: budget.Spend{Micros: 2_000_000, Tokens: 10}})
@@ -81,14 +81,14 @@ func TestBudgetRefusesExhaustedKey(t *testing.T) {
 	key := budgetKey(1_000_000, 0, budget.PeriodMonthly, 0, true)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, budgetRequest(key))
-	if rec.Code != http.StatusPaymentRequired {
-		t.Fatalf("status = %d, want 402", rec.Code)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rec.Code)
 	}
-	if got := rec.Header().Get("X-Budget-Limit"); got != "1.00" {
-		t.Errorf("X-Budget-Limit = %q, want 1.00", got)
+	if got := rec.Header().Get("X-Budget-Limit"); got != "" {
+		t.Errorf("X-Budget-Limit discloses the budget: %q", got)
 	}
-	if got := rec.Header().Get("X-Budget-Spent"); got != "2.00" {
-		t.Errorf("X-Budget-Spent = %q, want 2.00", got)
+	if got := rec.Header().Get("X-Budget-Spent"); got != "" {
+		t.Errorf("X-Budget-Spent discloses spend: %q", got)
 	}
 	// A monthly window has a reset, so Retry-After must name it.
 	if rec.Header().Get("Retry-After") == "" {
@@ -97,7 +97,7 @@ func TestBudgetRefusesExhaustedKey(t *testing.T) {
 }
 
 // TestBudgetTokenAxisRefusal proves the token ceiling refuses on its own axis
-// when no cost ceiling is configured, with the token counts in the headers.
+// when no cost ceiling is configured, without disclosing token counts.
 func TestBudgetTokenAxisRefusal(t *testing.T) {
 	rl := NewRateLimiter(time.Minute)
 	rl.SetBudgetReader(&stubBudget{spend: budget.Spend{Micros: 0, Tokens: 5000}})
@@ -107,14 +107,14 @@ func TestBudgetTokenAxisRefusal(t *testing.T) {
 	key := budgetKey(0, 1000, budget.PeriodDaily, 0, true)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, budgetRequest(key))
-	if rec.Code != http.StatusPaymentRequired {
-		t.Fatalf("status = %d, want 402", rec.Code)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rec.Code)
 	}
-	if got := rec.Header().Get("X-Budget-Limit"); got != "1000" {
-		t.Errorf("X-Budget-Limit = %q, want 1000", got)
+	if got := rec.Header().Get("X-Budget-Limit"); got != "" {
+		t.Errorf("X-Budget-Limit discloses the token ceiling: %q", got)
 	}
-	if got := rec.Header().Get("X-Budget-Spent"); got != "5000" {
-		t.Errorf("X-Budget-Spent = %q, want 5000", got)
+	if got := rec.Header().Get("X-Budget-Spent"); got != "" {
+		t.Errorf("X-Budget-Spent discloses token spend: %q", got)
 	}
 }
 
@@ -232,8 +232,8 @@ func TestBudgetTotalPeriodHasNoRetryAfter(t *testing.T) {
 	key := budgetKey(1_000_000, 0, budget.PeriodTotal, 0, true)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, budgetRequest(key))
-	if rec.Code != http.StatusPaymentRequired {
-		t.Fatalf("status = %d, want 402", rec.Code)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rec.Code)
 	}
 	if got := rec.Header().Get("Retry-After"); got != "" {
 		t.Errorf("Retry-After = %q, want empty for a total budget", got)
@@ -241,8 +241,7 @@ func TestBudgetTotalPeriodHasNoRetryAfter(t *testing.T) {
 }
 
 // TestBudgetRunsBeforeTPM proves the ordering: a key that is both over budget
-// and over its TPM bucket is answered with the budget's 402, not the token
-// bucket's 429. A client reading 429 would go looking at the wrong limit.
+// and over its TPM bucket is refused before a TPM reservation is consumed.
 func TestBudgetRunsBeforeTPM(t *testing.T) {
 	rl := NewRateLimiter(time.Minute)
 	rl.SetBudgetReader(&stubBudget{spend: budget.Spend{Micros: 2_000_000, Tokens: 0}})
@@ -255,8 +254,11 @@ func TestBudgetRunsBeforeTPM(t *testing.T) {
 	key.RateLimitTPM = new(1)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, budgetRequest(key))
-	if rec.Code != http.StatusPaymentRequired {
-		t.Fatalf("status = %d, want 402 (budget is checked before TPM)", rec.Code)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429 (budget is checked before TPM)", rec.Code)
+	}
+	if rec.Header().Get("X-Budget-Status") != "exhausted" {
+		t.Fatal("budget must refuse before the TPM check")
 	}
 }
 
@@ -277,8 +279,8 @@ func TestBudgetKeyColumnOverridesPlan(t *testing.T) {
 	key.PlanID = new("p1")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, budgetRequest(key))
-	if rec.Code != http.StatusPaymentRequired {
-		t.Fatalf("status = %d, want 402 (the key's own ceiling wins)", rec.Code)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429 (the key's own ceiling wins)", rec.Code)
 	}
 }
 
@@ -294,7 +296,7 @@ func TestBudgetPlanAppliesWhenKeyHasNone(t *testing.T) {
 	key := &models.APIKey{ID: "planonly", Key: "sk-planonly-abcdefghij", PlanID: new("p1")}
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, budgetRequest(key))
-	if rec.Code != http.StatusPaymentRequired {
-		t.Fatalf("status = %d, want 402 (the plan's ceiling governs)", rec.Code)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429 (the plan's ceiling governs)", rec.Code)
 	}
 }
