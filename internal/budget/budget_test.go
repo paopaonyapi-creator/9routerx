@@ -323,3 +323,31 @@ func TestFormatMicros(t *testing.T) {
 		}
 	}
 }
+
+func TestDecideBudgetFallbackModeHemat(t *testing.T) {
+	// Hard cutoff with Fallback = true: should return Fallback = true and Refuse = false
+	lim := Limits{
+		LimitMicros: 10_000_000,
+		HardCutoff:  true,
+		Fallback:    true,
+	}
+	d := decide(Spend{Micros: 12_000_000}, lim, time.Time{})
+	if !d.Fallback {
+		t.Error("expected Fallback to be true when HardCutoff + Fallback are set and spend exceeds limit")
+	}
+	if d.Refuse {
+		t.Error("expected Refuse to be false when Fallback is engaged")
+	}
+	if d.Axis != "cost" {
+		t.Errorf("Axis = %q, want cost", d.Axis)
+	}
+
+	// Context propagation
+	ctx := WithBudgetFallback(context.Background())
+	if !IsBudgetFallback(ctx) {
+		t.Error("expected IsBudgetFallback to be true on marked context")
+	}
+	if IsBudgetFallback(context.Background()) {
+		t.Error("expected IsBudgetFallback to be false on bare context")
+	}
+}

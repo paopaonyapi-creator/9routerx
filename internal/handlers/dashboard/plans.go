@@ -240,6 +240,28 @@ func (h *DashboardHandler) HandlePlanKeys(w http.ResponseWriter, r *http.Request
 	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"id": id, "keys": keys})
 }
 
+// HandleAssignPlan handles POST /api/plans/{id}/assign to apply a plan to multiple keys.
+func (h *DashboardHandler) HandleAssignPlan(w http.ResponseWriter, r *http.Request) {
+	id := getURLParam(r, "id")
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "failed to read body")
+		return
+	}
+	var req struct {
+		KeyIDs []string `json:"keyIds"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		handlerutil.WriteJSONError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if err := h.Repo.AssignPlanToKeys(id, req.KeyIDs); err != nil {
+		handlerutil.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	handlerutil.WriteJSON(w, http.StatusOK, map[string]any{"ok": true, "assigned": len(req.KeyIDs)})
+}
+
 // planFromRequest merges a partial request onto the stored plan.
 //
 // base is what an omitted field keeps: a fresh plan's defaults on create, the

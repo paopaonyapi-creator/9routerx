@@ -161,6 +161,11 @@ func (h *ChatHandler) LogFailure(
 			failurePayload["attempts"] = attempts
 		}
 	}
+	if rrec := RoutingRecorderFrom(ctx); rrec != nil {
+		if meta := rrec.Snapshot(); meta.Selected != "" || len(meta.Evaluated) > 0 {
+			failurePayload["routing"] = meta
+		}
+	}
 	reqData, marshalErr := json.Marshal(failurePayload)
 	if marshalErr != nil {
 		return
@@ -499,6 +504,11 @@ func (h *ChatHandler) logUsage(ctx context.Context, info *UsageLogInfo, usage *t
 	if rec := FallbackAttemptRecorderFrom(ctx); rec != nil {
 		if attempts := rec.Snapshot(); len(attempts) > 0 {
 			detailPayload["attempts"] = attempts
+		}
+	}
+	if rrec := RoutingRecorderFrom(ctx); rrec != nil {
+		if meta := rrec.Snapshot(); meta.Selected != "" || len(meta.Evaluated) > 0 {
+			detailPayload["routing"] = meta
 		}
 	}
 	reqData, err := json.Marshal(detailPayload)

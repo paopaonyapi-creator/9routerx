@@ -19,6 +19,7 @@ import (
 	"9routerx/proxy/internal/log"
 	"9routerx/proxy/internal/models"
 	"9routerx/proxy/internal/providers"
+	"9routerx/proxy/internal/resilience"
 	internalproxy "9routerx/proxy/internal/proxy"
 	"9routerx/proxy/internal/translator"
 )
@@ -686,6 +687,15 @@ func (h *ChatHandler) comboEntrySendable(modelInfo *ModelInfo, excludeIDs []stri
 	return false
 }
 
+func (h *ChatHandler) breakerOpen(provider string) bool {
+	if h == nil || h.Resilience == nil {
+		return false
+	}
+	canonical := providers.ResolveAlias(provider)
+	st := h.Resilience.BreakerStatus(canonical)
+	return st.State == resilience.StateOpen && st.RetryAfterMs > 0
+}
+
 // handleComboFallback iterates through combo model entries, trying each one.
 // Auto-capability-switch: floats vision/pdf-capable models to the front.
 // adapterModels holds the capacity-adapter entries injected for this request;
@@ -694,6 +704,16 @@ func (h *ChatHandler) handleComboFallback(ctx context.Context, w http.ResponseWr
 	if FallbackAttemptRecorderFrom(ctx) == nil {
 		ctx = WithFallbackAttemptRecorder(ctx, NewFallbackAttemptRecorder())
 	}
+	// B6: arm the zero-retry dedup once, at the root entry. The recursion
+	// into fallback combos inherits the registry through the context, so a
+	// multi-combo walk dedups against every dispatch it made anywhere.
+	ctx = h.attachRouteDedup(ctx)
+	// B7: routing explainability recorder for tracking candidate evaluations and selection.
+	if RoutingRecorderFrom(ctx) == nil {
+		ctx = WithRoutingRecorder(ctx, NewRoutingRecorder())
+	}
+	// A3: size the prompt tokens once for the entire combo traversal.
+	ctx = WithEstimatedPromptTokens(ctx, promptTokensFrom(ctx, body))
 	cw := newCommittedResponseWriter(w)
 	cw.stream = isStream
 	cw.responsesClient = translator.IsResponsesClient(ctx)
@@ -751,6 +771,10 @@ func (h *ChatHandler) handleComboFallbackWithVisited(ctx context.Context, cw *co
 	// A model that recently timed out sits out its grace period.
 	models = h.withoutBenchedModels(comboName, models, timeoutGrace)
 
+	if rrec := RoutingRecorderFrom(ctx); rrec != nil {
+		rrec.SetCandidates(strategy, models)
+	}
+
 	// If every model fails, retry the whole pass once after a bounded
 	// Retry-After wait so a transient provider blip doesn't surface as a hard
 	// 429 to the client.
@@ -790,12 +814,60 @@ func (h *ChatHandler) handleComboFallbackWithVisited(ctx context.Context, cw *co
 			// Skip unavailable (model-locked) providers
 			if !h.Repo.IsProviderAvailable(modelInfo.Provider, modelInfo.Model) {
 				log.Warn("combo", "skip unhealthy", "provider", modelInfo.Provider, "model", modelInfo.Model)
+				RecordCandidateSkip(ctx, entry, modelInfo.Provider, "unhealthy or rate-limited")
 				if lastErr == nil {
 					lastErr = &upstreamError{StatusCode: http.StatusTooManyRequests, Body: []byte(`{"error":{"message":"all connections for this provider are rate-limited","type":"rate_limit_error","code":429}}`)}
 				}
 				continue
 			}
 
+			// B2 Circuit Breaker: skip candidate if provider circuit breaker is OPEN
+			if h.breakerOpen(modelInfo.Provider) {
+				log.Warn("combo", "skip circuit breaker open", "provider", modelInfo.Provider, "model", modelInfo.Model)
+				RecordCandidateSkip(ctx, entry, modelInfo.Provider, "circuit breaker open (provider failing)")
+				if lastErr == nil {
+					lastErr = &upstreamError{
+						StatusCode: http.StatusServiceUnavailable,
+						Body:       []byte(`{"error":{"message":"provider circuit breaker is open","type":"service_unavailable","code":503}}`),
+					}
+				}
+				continue
+			}
+
+			// B6 zero-retry dedup: a seat whose exact (body, provider, model)
+			// pair was already dispatched by this walk is skipped, whatever
+			// account would serve it — the prompt failed upstream already,
+			// and resending the identical bytes is a pure quota burn.
+			if seatRetryDedupSkip(ctx, body, modelInfo.Provider, modelInfo.Model) {
+				RecordCandidateSkip(ctx, entry, modelInfo.Provider, "zero-retry dedup (duplicate prompt in turn)")
+				continue
+			}
+			// B6 attempt cap: a seat past its per-model/per-provider/global
+			// dispatch ceiling is skipped like an unhealthy one, so the walk
+			// spends its remaining attempts on candidates with room.
+			if h.attemptCapReached(ctx, modelInfo.Provider, modelInfo.Model) {
+				log.Info("combo", "attempt cap reached, skipping candidate", "provider", modelInfo.Provider, "model", modelInfo.Model)
+				RecordCandidateSkip(ctx, entry, modelInfo.Provider, "attempt cap reached")
+				if lastErr == nil {
+					lastErr = &upstreamError{StatusCode: http.StatusTooManyRequests, Body: []byte(`{"error":{"message":"attempt cap reached for this request","type":"gateway_limit","code":429}}`)}
+				}
+				continue
+			}
+			// A3 Context Window Guard: skip model whose context window is too small for prompt
+			if h.contextGuardSkip(ctx, body, modelInfo.Provider, modelInfo.Model) {
+				targetWindow := h.modelContextWindow(modelInfo.Provider, modelInfo.Model)
+				log.Info("combo", "context guard: prompt exceeds model context window, skipping candidate", "provider", modelInfo.Provider, "model", modelInfo.Model, "contextWindow", targetWindow)
+				RecordCandidateSkip(ctx, entry, modelInfo.Provider, fmt.Sprintf("prompt exceeds context window (%d)", targetWindow))
+				if lastErr == nil {
+					lastErr = &upstreamError{StatusCode: http.StatusBadRequest, Body: []byte(fmt.Sprintf(`{"error":{"message":"prompt exceeds model %s/%s context window (%d)","type":"invalid_request_error","code":"context_length_exceeded"}}`, modelInfo.Provider, modelInfo.Model, targetWindow))}
+				}
+				continue
+			}
+			// This entry is now spent for the rest of the walk: mark it against
+			// the dedup once per entry, not per connection - the entry's own
+			// connection loop is the multi-account fallback and must stay free
+			// to try its remaining accounts with the same bytes.
+			markRetryDedupSeat(ctx, body, modelInfo.Provider, modelInfo.Model)
 			candidateCtx := ctx
 			var seatBudgetMs int
 			if settings != nil {
@@ -877,6 +949,11 @@ func (h *ChatHandler) handleComboFallbackWithVisited(ctx context.Context, cw *co
 
 				var upstreamBody map[string]any
 				upstreamBodyJSON := adapterTrimmedBody(body, entry, adapterModels)
+
+				if h.contextGuardTruncate(ctx, upstreamBodyJSON, modelInfo.Provider, modelInfo.Model) {
+					targetWindow := h.modelContextWindow(modelInfo.Provider, modelInfo.Model)
+					upstreamBodyJSON = stripHistoryForContext(upstreamBodyJSON, targetWindow)
+				}
 
 				if err := json.Unmarshal(upstreamBodyJSON, &upstreamBody); err != nil {
 					handlerutil.WriteJSONError(cw, http.StatusBadRequest, "failed to parse request body")
@@ -1052,6 +1129,7 @@ func (h *ChatHandler) handleComboFallbackWithVisited(ctx context.Context, cw *co
 				}
 
 				entrySuccess = true
+				RecordCandidateSelection(ctx, modelInfo.Model, modelInfo.Provider, "candidate seat served response")
 				break
 			}
 			if timeoutGate != nil && timeoutGate.finish() && ctx.Err() == nil {
@@ -1169,6 +1247,15 @@ func (h *ChatHandler) handleMessagesComboFallback(ctx context.Context, w http.Re
 	if FallbackAttemptRecorderFrom(ctx) == nil {
 		ctx = WithFallbackAttemptRecorder(ctx, NewFallbackAttemptRecorder())
 	}
+	// B6: see handleComboFallback — one registry per request, armed here.
+	ctx = h.attachRouteDedup(ctx)
+	// B7: routing explainability recorder.
+	if RoutingRecorderFrom(ctx) == nil {
+		ctx = WithRoutingRecorder(ctx, NewRoutingRecorder())
+	}
+	// A3: size the prompt tokens once for the entire combo traversal.
+	bodyJSON, _ := json.Marshal(translatedReq)
+	ctx = WithEstimatedPromptTokens(ctx, promptTokensFrom(ctx, bodyJSON))
 	cw := newCommittedResponseWriter(w)
 	cw.stream = isStream
 	cw.responsesClient = translator.IsResponsesClient(ctx)
@@ -1192,6 +1279,14 @@ func (h *ChatHandler) handleMessagesComboFallbackWithVisited(ctx context.Context
 		ctx, models = h.applySmartRouting(ctx, bodyJSON, comboModels, comboName)
 	} else if strategy == "tokenmaxxing" {
 		models = h.applyTokenmaxxingRouting(ctx, comboModels)
+	} else if strategy == "cache-optimized" {
+		models = h.applyCacheOptimizedRouting(bodyJSON, comboModels)
+	} else if strategy == "auto" {
+		models = h.applyAutoRouting(ctx, bodyJSON, comboModels)
+	} else if strategy == "quota-weighted" {
+		models = h.applyQuotaWeightedRouting(ctx, comboModels)
+	} else if strategy == "reset-aware" {
+		models = h.applyResetAwareRouting(ctx, comboModels)
 	} else if h.comboRespectsStoredOrder(comboName) {
 		models = slices.Clone(comboModels)
 	} else {
@@ -1203,6 +1298,10 @@ func (h *ChatHandler) handleMessagesComboFallbackWithVisited(ctx context.Context
 	}
 	// A model that recently timed out sits out its grace period.
 	models = h.withoutBenchedModels(comboName, models, timeoutGrace)
+
+	if rrec := RoutingRecorderFrom(ctx); rrec != nil {
+		rrec.SetCandidates(strategy, models)
+	}
 
 	// If every model fails, retry the whole pass once after a bounded
 	// Retry-After wait so a transient provider blip doesn't surface as a hard
@@ -1239,13 +1338,54 @@ func (h *ChatHandler) handleMessagesComboFallbackWithVisited(ctx context.Context
 			// Skip unavailable (model-locked) providers
 			if !h.Repo.IsProviderAvailable(modelInfo.Provider, modelInfo.Model) {
 				log.Warn("combo", "skip unhealthy", "provider", modelInfo.Provider, "model", modelInfo.Model)
+				RecordCandidateSkip(ctx, entry, modelInfo.Provider, "unhealthy or rate-limited")
 				if lastErr == nil {
 					lastErr = &upstreamError{StatusCode: http.StatusTooManyRequests, Body: []byte(`{"error":{"message":"all connections for this provider are rate-limited","type":"rate_limit_error","code":429}}`)}
 				}
 				continue
 			}
+
+			// B2 Circuit Breaker: skip candidate if provider circuit breaker is OPEN
+			if h.breakerOpen(modelInfo.Provider) {
+				log.Warn("combo", "skip circuit breaker open", "provider", modelInfo.Provider, "model", modelInfo.Model)
+				RecordCandidateSkip(ctx, entry, modelInfo.Provider, "circuit breaker open (provider failing)")
+				if lastErr == nil {
+					lastErr = &upstreamError{
+						StatusCode: http.StatusServiceUnavailable,
+						Body:       []byte(`{"error":{"message":"provider circuit breaker is open","type":"service_unavailable","code":503}}`),
+					}
+				}
+				continue
+			}
 			candidateCtx := ctx
 			candidateWriter := http.ResponseWriter(cw)
+			// B6 zero-retry dedup and attempt cap: the same guards the chat
+			// loop applies before its seat work, at the same point — after
+			// the unavailable-provider skip, before any connection is picked.
+			if seatRetryDedupSkip(ctx, bodyJSON, modelInfo.Provider, modelInfo.Model) {
+				RecordCandidateSkip(ctx, entry, modelInfo.Provider, "zero-retry dedup (duplicate prompt in turn)")
+				continue
+			}
+			if h.attemptCapReached(ctx, modelInfo.Provider, modelInfo.Model) {
+				log.Info("combo", "attempt cap reached, skipping candidate", "provider", modelInfo.Provider, "model", modelInfo.Model)
+				RecordCandidateSkip(ctx, entry, modelInfo.Provider, "attempt cap reached")
+				if lastErr == nil {
+					lastErr = &upstreamError{StatusCode: http.StatusTooManyRequests, Body: []byte(`{"error":{"message":"attempt cap reached for this request","type":"gateway_limit","code":429}}`)}
+				}
+				continue
+			}
+			// A3 Context Window Guard: skip model whose context window is too small for prompt
+			if h.contextGuardSkip(ctx, bodyJSON, modelInfo.Provider, modelInfo.Model) {
+				targetWindow := h.modelContextWindow(modelInfo.Provider, modelInfo.Model)
+				log.Info("combo", "context guard: prompt exceeds model context window, skipping candidate", "provider", modelInfo.Provider, "model", modelInfo.Model, "contextWindow", targetWindow)
+				RecordCandidateSkip(ctx, entry, modelInfo.Provider, fmt.Sprintf("prompt exceeds context window (%d)", targetWindow))
+				if lastErr == nil {
+					lastErr = &upstreamError{StatusCode: http.StatusBadRequest, Body: []byte(fmt.Sprintf(`{"error":{"message":"prompt exceeds model %s/%s context window (%d)","type":"invalid_request_error","code":"context_length_exceeded"}}`, modelInfo.Provider, modelInfo.Model, targetWindow))}
+				}
+				continue
+			}
+			// The entry is spent for the walk: see the chat walk's mark above.
+			markRetryDedupSeat(ctx, bodyJSON, modelInfo.Provider, modelInfo.Model)
 			// See the chat loop: the candidate tried last keeps the global deadline.
 			var timeoutGate *comboResponseTimeout
 			if responseTimeout > 0 && !isLastModel {
@@ -1306,6 +1446,15 @@ func (h *ChatHandler) handleMessagesComboFallbackWithVisited(ctx context.Context
 				if err != nil {
 					handlerutil.WriteJSONError(cw, http.StatusBadRequest, "failed to parse request body")
 					return
+				}
+				if h.contextGuardTruncate(ctx, bodyJSON, modelInfo.Provider, modelInfo.Model) {
+					targetWindow := h.modelContextWindow(modelInfo.Provider, modelInfo.Model)
+					if trimmedJSON := stripHistoryForContext(bodyJSON, targetWindow); len(trimmedJSON) > 0 {
+						var trimmedMap map[string]any
+						if json.Unmarshal(trimmedJSON, &trimmedMap) == nil {
+							entryBody = trimmedMap
+						}
+					}
 				}
 				entryBody["model"] = h.wireModelForNode(modelInfo.Provider, modelInfo.Model)
 				candidateCtx = h.applyJailbreak(candidateCtx, entryBody, comboName, jailbreakLegIDs(modelInfo.Provider, modelInfo.Model)...)
@@ -1461,6 +1610,7 @@ func (h *ChatHandler) handleMessagesComboFallbackWithVisited(ctx context.Context
 				}
 
 				entrySuccess = true
+				RecordCandidateSelection(ctx, modelInfo.Model, modelInfo.Provider, "candidate seat served response")
 				break
 			}
 			if timeoutGate != nil && timeoutGate.finish() && ctx.Err() == nil {

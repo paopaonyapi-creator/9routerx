@@ -31,6 +31,9 @@ func parseSettings(rawData string) (*SettingsData, bool) {
 	applyCapacityAdapters(s, raw)
 	applyProviderOverrides(s, raw)
 	applySeatAttemptBudget(s, raw)
+	applyRetryDedupSettings(s, raw)
+	applyContextGuardSettings(s, raw)
+	applyBudgetFallbackSettings(s, raw)
 	applyDispatchGuardSettings(s, raw)
 	applyWebExecSettings(s, raw)
 	applyHiddenModelsSettings(s, raw)
@@ -82,6 +85,58 @@ func applyDispatchGuardSettings(s *SettingsData, raw map[string]any) {
 func applySeatAttemptBudget(s *SettingsData, raw map[string]any) {
 	if sab, ok := raw["seatAttemptBudgetMs"].(float64); ok && sab >= 0 {
 		s.SeatAttemptBudgetMs = int(sab)
+	}
+}
+
+// applyRetryDedupSettings reads the B6 zero-retry dedup switch and the
+// attempt-cap tiers. Absent keys leave the defaults (dedup off, no cap),
+// which is the behaviour every install had before these settings existed.
+func applyRetryDedupSettings(s *SettingsData, raw map[string]any) {
+	if v, ok := raw["retryDedupEnabled"].(bool); ok {
+		s.RetryDedupEnabled = v
+	}
+	ac, ok := raw["attemptCap"].(map[string]any)
+	if !ok {
+		return
+	}
+	if g, ok := ac["global"].(float64); ok && g >= 0 {
+		s.AttemptCap.Global = int(g)
+	}
+	if provs, ok := ac["providers"].(map[string]any); ok && len(provs) > 0 {
+		s.AttemptCap.Providers = make(map[string]int, len(provs))
+		for k, v := range provs {
+			if n, ok := v.(float64); ok && n >= 0 {
+				s.AttemptCap.Providers[k] = int(n)
+			}
+		}
+	}
+	if models, ok := ac["models"].(map[string]any); ok && len(models) > 0 {
+		s.AttemptCap.Models = make(map[string]int, len(models))
+		for k, v := range models {
+			if n, ok := v.(float64); ok && n >= 0 {
+				s.AttemptCap.Models[k] = int(n)
+			}
+		}
+	}
+}
+
+// applyContextGuardSettings reads the A3 context window guard settings.
+func applyContextGuardSettings(s *SettingsData, raw map[string]any) {
+	if v, ok := raw["contextGuardEnabled"].(bool); ok {
+		s.ContextGuardEnabled = v
+	}
+	if v, ok := raw["contextGuardMode"].(string); ok && v != "" {
+		s.ContextGuardMode = v
+	}
+}
+
+// applyBudgetFallbackSettings reads the C1 budget fallback (Mode Hemat) settings.
+func applyBudgetFallbackSettings(s *SettingsData, raw map[string]any) {
+	if v, ok := raw["budgetFallbackEnabled"].(bool); ok {
+		s.BudgetFallbackEnabled = v
+	}
+	if v, ok := raw["budgetFallbackModel"].(string); ok && v != "" {
+		s.BudgetFallbackModel = v
 	}
 }
 

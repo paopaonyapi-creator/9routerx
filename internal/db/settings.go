@@ -190,6 +190,37 @@ type SettingsData struct {
 	// nothing. The per-key lists live in apiKeys.hiddenModels; the two are
 	// unioned by the chat filter.
 	HiddenModels string `json:"hiddenModels,omitempty"`
+	// B6 zero-retry dedup: when true, a combo/account walk never dispatches
+	// the same (body, provider, model) pair twice in one request, so a retry
+	// storm cannot double-bill a prompt that upstream already rejected.
+	// Off by default: the pre-setting behaviour retried freely.
+	RetryDedupEnabled bool `json:"retryDedupEnabled,omitempty"`
+	// B6 attempt cap: the per-request dispatch ceiling, resolved
+	// most-specific-wins (model entry > provider entry > global). A tier set
+	// to 0 disables the cap for everything it covers; an entirely empty cap
+	// means unlimited — the behaviour before this setting existed.
+	AttemptCap AttemptCapSettings `json:"attemptCap,omitempty"`
+	// A3 Context Window Guard: when true (default), combo fallback checks if the prompt
+	// estimated tokens exceed the candidate's context window.
+	ContextGuardEnabled bool   `json:"contextGuardEnabled"`
+	// ContextGuardMode governs how an oversized prompt is handled:
+	// "skip" (default) skips the candidate; "truncate" drops middle history to fit.
+	ContextGuardMode    string `json:"contextGuardMode,omitempty"`
+	// C1 Budget Guard / Mode Hemat: when true, a key that has exhausted its period
+	// budget is downgraded to BudgetFallbackModel instead of rejected.
+	BudgetFallbackEnabled bool   `json:"budgetFallbackEnabled,omitempty"`
+	BudgetFallbackModel   string `json:"budgetFallbackModel,omitempty"`
+}
+
+// AttemptCapSettings mirrors resilience.AttemptCap in settings JSON so the
+// settings row stays plain data and db keeps no import cycle into the
+// resilience package. Converted at the chat handler boundary.
+type AttemptCapSettings struct {
+	Global    int            `json:"global,omitempty"`
+	Providers map[string]int `json:"providers,omitempty"`
+	// Models accepts both the fully qualified "provider/model" id a combo seat
+	// carries and the bare model id a direct request names.
+	Models map[string]int `json:"models,omitempty"`
 }
 
 // ProviderThinking is one provider's operator reasoning override, mirroring
@@ -215,6 +246,8 @@ func DefaultSettings() *SettingsData {
 			"docker":  true,
 			"system":  true,
 		},
+		ContextGuardEnabled:     true,
+		ContextGuardMode:        "skip",
 		RTKRawRetention:         "never",
 		CavemanEnabled:          false,
 		CavemanMode:             "simple",

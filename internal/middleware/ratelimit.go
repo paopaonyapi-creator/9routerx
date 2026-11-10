@@ -749,9 +749,8 @@ func RequireRateLimit(rl *RateLimiter, defaults Defaults, usage TokenUsageReader
 			// Per-period budget (F-2): a spend ceiling over daily/weekly/
 			// monthly/total. It runs after the lifetime quota for the same
 			// reason — an exhausted key must not spend a queue slot on its way
-			// to a refusal — and before TPM so an over-budget request is
-			// answered with 402 rather than a token-bucket 429 that would send
-			// the client looking at the wrong limit.
+			// to a refusal — and before TPM so a refused request does not
+			// consume a token-bucket reservation.
 			if budgetCheck(w, r, apiKey, limits) {
 				return
 			}
@@ -1032,7 +1031,7 @@ func queueRetryAfter(limits Limits) int {
 }
 
 // budgetCheck refuses a key that has spent its per-period budget (F-2).
-// It returns true when the request was written a 402 and the handler must
+// It returns true when the request was written a 429 and the handler must
 // stop.
 //
 // The spend read is skipped entirely for a key with no budget armed, so an
@@ -1055,8 +1054,15 @@ func budgetCheck(w http.ResponseWriter, r *http.Request, apiKey *models.APIKey, 
 		return false
 	}
 	d := budget.Check(r.Context(), reader.budgetReader(), secret, limits.Budget, time.Now())
-	if d.Alerting && !d.Refuse {
+	if d.Alerting && !d.Refuse && !d.Fallback {
 		w.Header().Set("X-Budget-Status", "approaching")
+	}
+	if d.Fallback {
+		log.Info("rate limit", "budget breached: engaging mode hemat (fallback)", "key", apiKey.ID, "axis", d.Axis)
+		w.Header().Set("X-Budget-Status", "downgraded")
+		w.Header().Set("X-Budget-Fallback", "economy")
+		*r = *r.WithContext(budget.WithBudgetFallback(r.Context()))
+		return false
 	}
 	if !d.Refuse {
 		return false
@@ -1090,11 +1096,9 @@ func rlFromRequest(r *http.Request) *RateLimiter {
 
 // rejectBudgetExhausted answers a key that has spent its period budget.
 //
-// 402 rather than 403: the lifetime token quota is an access decision, while
-// this one is a payment-adjacent one — the request is well-formed and the key
-// is valid, it simply has no budget left to spend. Retry-After names the
-// period reset, which for a total budget is absent because waiting never
-// helps there.
+// The C1 contract uses a generic 429 without disclosing the budget axis or
+// spend. Retry-After names the reset; a total budget has no reset because
+// waiting cannot restore it.
 func rejectBudgetExhausted(w http.ResponseWriter, d budget.Decision) {
 	if !d.ResetAt.IsZero() {
 		secs := int(time.Until(d.ResetAt).Seconds())
@@ -1103,19 +1107,9 @@ func rejectBudgetExhausted(w http.ResponseWriter, d budget.Decision) {
 		}
 		w.Header().Set("Retry-After", strconv.Itoa(secs))
 	}
-	if d.Axis == "cost" {
-		w.Header().Set("X-Budget-Limit", budget.FormatMicros(d.Limits.LimitMicros))
-		w.Header().Set("X-Budget-Spent", budget.FormatMicros(d.Spend.Micros))
-		handlerutil.WriteJSONError(w, http.StatusPaymentRequired,
-			fmt.Sprintf("Budget exhausted for this API key ($%s of $%s this %s period).",
-				budget.FormatMicros(d.Spend.Micros), budget.FormatMicros(d.Limits.LimitMicros), d.Limits.Period))
-		return
-	}
-	w.Header().Set("X-Budget-Limit", strconv.FormatInt(d.Limits.LimitTokens, 10))
-	w.Header().Set("X-Budget-Spent", strconv.FormatInt(d.Spend.Tokens, 10))
-	handlerutil.WriteJSONError(w, http.StatusPaymentRequired,
-		fmt.Sprintf("Token budget exhausted for this API key (%d of %d this %s period).",
-			d.Spend.Tokens, d.Limits.LimitTokens, d.Limits.Period))
+	w.Header().Set("X-Budget-Status", "exhausted")
+	handlerutil.WriteJSONError(w, http.StatusTooManyRequests,
+		"Rate limit reached: quota limit exceeded for this period.")
 }
 
 // rejectQuotaExhausted answers a key that has spent its lifetime token budget.
@@ -1254,6 +1248,7 @@ func limitsFor(apiKey *models.APIKey, d Defaults, plans policy.PlanSource) Limit
 		Period:      pol.Period,
 		AlertPct:    pol.AlertPct,
 		HardCutoff:  pol.HardCutoff,
+		Fallback:    out.Budget.Fallback,
 	}
 
 	// Queue timeout. The default only applies when the CONCURRENCY cap is the

@@ -78,6 +78,7 @@ type Limits struct {
 	Period      Period
 	AlertPct    int
 	HardCutoff  bool
+	Fallback    bool
 }
 
 // Armed reports whether any budget axis is configured. A key with no budget
@@ -149,6 +150,9 @@ func SpendFor(ctx context.Context, r Reader, rawKey string, w Window) (Spend, er
 type Decision struct {
 	// Refuse is true when the request must not be served.
 	Refuse bool
+	// Fallback is true when the spend has crossed the cutoff but Mode Hemat (downgrade)
+	// is armed, so the request should be rerouted to an economy model instead of refused.
+	Fallback bool
 	// Alerting is true when the spend has crossed the alert threshold but
 	// not the hard cutoff, so the response carries a warning header.
 	Alerting bool
@@ -188,6 +192,11 @@ func decide(spend Spend, limits Limits, resetAt time.Time) Decision {
 	out := Decision{Spend: spend, Limits: limits, ResetAt: resetAt}
 	if limits.LimitMicros > 0 && spend.Micros >= limits.LimitMicros {
 		if limits.HardCutoff {
+			if limits.Fallback {
+				out.Fallback = true
+				out.Axis = "cost"
+				return out
+			}
 			out.Refuse = true
 			out.Axis = "cost"
 			return out
@@ -196,6 +205,11 @@ func decide(spend Spend, limits Limits, resetAt time.Time) Decision {
 	}
 	if limits.LimitTokens > 0 && spend.Tokens >= limits.LimitTokens {
 		if limits.HardCutoff {
+			if limits.Fallback {
+				out.Fallback = true
+				out.Axis = "tokens"
+				return out
+			}
 			out.Refuse = true
 			out.Axis = "tokens"
 			return out
@@ -237,3 +251,22 @@ func FormatMicros(micros int64) string {
 // so a caller holding a raw key does not have to import the handler utility to
 // ask the same question the engine asks.
 func Masked(rawKey string) string { return handlerutil.MaskAPIKey(rawKey) }
+
+type budgetFallbackCtxKey struct{}
+
+// WithBudgetFallback marks ctx as a downgraded budget fallback request.
+func WithBudgetFallback(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, budgetFallbackCtxKey{}, true)
+}
+
+// IsBudgetFallback reports whether ctx was marked for economy model downgrade.
+func IsBudgetFallback(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	v, _ := ctx.Value(budgetFallbackCtxKey{}).(bool)
+	return v
+}

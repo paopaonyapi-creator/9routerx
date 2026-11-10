@@ -163,6 +163,29 @@ func TestSetApiKeyPlanAndCount(t *testing.T) {
 	}
 }
 
+func TestAssignPlanToKeysBulk(t *testing.T) {
+	repo := openEphemeralSchemaDB(t)
+
+	if err := repo.CreateApiKey("k1", "sk-bulk-0001", "Key 1", "m1"); err != nil {
+		t.Fatalf("CreateApiKey k1: %v", err)
+	}
+	if err := repo.CreateApiKey("k2", "sk-bulk-0002", "Key 2", "m2"); err != nil {
+		t.Fatalf("CreateApiKey k2: %v", err)
+	}
+	if err := repo.CreatePlan(Plan{ID: "pro-plan", TenantID: "default", Name: "Pro Plan", Period: PlanPeriodMonthly}); err != nil {
+		t.Fatalf("CreatePlan: %v", err)
+	}
+
+	if err := repo.AssignPlanToKeys("pro-plan", []string{"k1", "k2"}); err != nil {
+		t.Fatalf("AssignPlanToKeys: %v", err)
+	}
+
+	n, err := repo.CountPlanKeys("pro-plan")
+	if err != nil || n != 2 {
+		t.Fatalf("CountPlanKeys = %d, %v; want 2", n, err)
+	}
+}
+
 // TestPlanUpdateMissingRowIsAnError guards the update path: a plan id that no
 // longer exists must not report success, or the dashboard would show a saved
 // template that was never written.

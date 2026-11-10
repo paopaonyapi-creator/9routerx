@@ -2,6 +2,7 @@
 package chat
 
 import (
+	"9routerx/proxy/internal/budget"
 	"9routerx/proxy/internal/changelogfrag"
 	json "9routerx/proxy/internal/fastjson"
 	"9routerx/proxy/internal/handlerutil"
@@ -72,6 +73,16 @@ func (h *ChatHandler) HandleChatCompletions(w http.ResponseWriter, r *http.Reque
 	if reqBody.Model == "" {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "missing model")
 		return
+	}
+
+	// C1 Mode Hemat (Budget Fallback): if budget limit was breached but fallback
+	// was armed, downgrade to economy model instead of failing the turn.
+	if budget.IsBudgetFallback(r.Context()) {
+		w.Header().Set("X-Budget-Fallback", "economy")
+		w.Header().Set("X-Budget-Status", "downgraded")
+		economyModel := h.resolveEconomyModel(modelName)
+		log.Info("chat", "budget fallback: engaging mode hemat", "original", modelName, "economy", economyModel)
+		modelName = economyModel
 	}
 
 	// Bypass synthetic requests (Claude Code naming, warmup, keepalive)
@@ -321,6 +332,16 @@ func (h *ChatHandler) HandleMessages(w http.ResponseWriter, r *http.Request) {
 	if reqBody.Model == "" {
 		handlerutil.WriteJSONError(w, http.StatusBadRequest, "missing model")
 		return
+	}
+
+	// C1 Mode Hemat (Budget Fallback): if budget limit was breached but fallback
+	// was armed, downgrade to economy model instead of failing the turn.
+	if budget.IsBudgetFallback(r.Context()) {
+		w.Header().Set("X-Budget-Fallback", "economy")
+		w.Header().Set("X-Budget-Status", "downgraded")
+		economyModel := h.resolveEconomyModel(modelName)
+		log.Info("chat", "budget fallback: engaging mode hemat", "original", modelName, "economy", economyModel)
+		modelName = economyModel
 	}
 
 	// Per-key model policy: 403 before any translation work or connection

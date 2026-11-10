@@ -5,6 +5,7 @@ package integration
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ import (
 
 // TestPeriodBudgetRefusesExhaustedKey drives the real router: a key with a
 // per-period budget whose measured spend already exceeds the ceiling must be
-// answered 402 before any upstream call is made.
+// answered 429 before any upstream call is made.
 //
 // This is the integration half of the budget engine. The unit tests prove the
 // thresholds; this proves the wiring — that the limiter reads the budget off
@@ -40,18 +41,59 @@ func TestPeriodBudgetRefusesExhaustedKey(t *testing.T) {
 	}
 
 	res := env.Post(t, "/v1/chat/completions", ChatBody("deepseek/deepseek-chat", false), WithAPIKey("sk-budget-integration-0001"))
-	if res.Status != http.StatusPaymentRequired {
-		t.Fatalf("status = %d, want 402 (body: %s)", res.Status, truncate(res.Body))
+	if res.Status != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429 (body: %s)", res.Status, truncate(res.Body))
 	}
-	if got := res.Header.Get("X-Budget-Limit"); got != "1.00" {
-		t.Errorf("X-Budget-Limit = %q, want 1.00", got)
+	if got := res.Header.Get("X-Budget-Limit"); got != "" {
+		t.Errorf("X-Budget-Limit discloses the budget: %q", got)
 	}
-	if got := res.Header.Get("X-Budget-Spent"); got != "2.00" {
-		t.Errorf("X-Budget-Spent = %q, want 2.00", got)
+	if got := res.Header.Get("X-Budget-Spent"); got != "" {
+		t.Errorf("X-Budget-Spent discloses spend: %q", got)
+	}
+	if strings.Contains(strings.ToLower(string(res.Body)), "budget") || !strings.Contains(string(res.Body), "quota limit exceeded") {
+		t.Errorf("refusal must carry the generic quota message: %s", res.Body)
 	}
 	// The refusal must not have consumed an upstream turn.
 	if hits := upstream.Count(); hits != 0 {
 		t.Errorf("upstream received %d requests, want 0 for a refused key", hits)
+	}
+}
+
+// The production middleware must carry the fallback decision through both
+// public chat formats and dispatch the configured economy model upstream.
+func TestPeriodBudgetFallbackRoutesEconomy(t *testing.T) {
+	for _, path := range []string{"/v1/chat/completions", "/v1/messages"} {
+		t.Run(path, func(t *testing.T) {
+			env, upstream := newProviderEnv(t)
+			if err := env.Repo.SetApiKeyPeriodBudget("integration-key", 1_000_000, 0, "monthly", 0, true); err != nil {
+				t.Fatalf("set budget: %v", err)
+			}
+			if err := env.Repo.UpdateSettingsRaw(map[string]any{
+				"budgetFallbackEnabled": true,
+				"budgetFallbackModel":   "deepseek/deepseek-chat",
+			}); err != nil {
+				t.Fatalf("set fallback: %v", err)
+			}
+			if err := env.Repo.InsertUsageHistory("deepseek", "deepseek-reasoner", "conn-1",
+				"sk-upstream", "/v1/chat/completions", 100000, 50000, 2.0, "success", 150000, "{}", "{}",
+				handlerutil.MaskAPIKey(env.APIKey)); err != nil {
+				t.Fatalf("seed usage: %v", err)
+			}
+			body := ChatBody("deepseek/deepseek-reasoner", false)
+			if path == "/v1/messages" {
+				body = claudeMessagesBody("deepseek/deepseek-reasoner", false)
+			}
+			res := env.Post(t, path, body)
+			if res.Status != http.StatusOK {
+				t.Fatalf("status = %d, want 200: %s", res.Status, truncate(res.Body))
+			}
+			if res.Header.Get("X-Budget-Status") != "downgraded" || res.Header.Get("X-Budget-Fallback") != "economy" {
+				t.Errorf("missing fallback headers: %v", res.Header)
+			}
+			if got := upstream.Last(t).Model(t); got != "deepseek-chat" {
+				t.Errorf("upstream model = %q, want deepseek-chat", got)
+			}
+		})
 	}
 }
 
@@ -180,7 +222,7 @@ func TestPeriodBudgetPlanAppliesToKey(t *testing.T) {
 	}
 
 	res := env.Post(t, "/v1/chat/completions", ChatBody("deepseek/deepseek-chat", false), WithAPIKey("sk-budget-plan-integration01"))
-	if res.Status != http.StatusPaymentRequired {
-		t.Fatalf("status = %d, want 402 (the plan's ceiling governs)", res.Status)
+	if res.Status != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429 (the plan's ceiling governs)", res.Status)
 	}
 }

@@ -13,6 +13,7 @@ import (
 
 	"9routerx/proxy/internal/models"
 	"9routerx/proxy/internal/pricing"
+	"9routerx/proxy/internal/providers"
 	"9routerx/proxy/internal/resilience"
 	"9routerx/proxy/internal/routing"
 )
@@ -114,11 +115,20 @@ func (h *ChatHandler) strategyLatencyForModels(models []string) map[string]float
 // An unknown provider (no prefix, or an alias the resolver refuses) counts
 // healthy: the breaker only downgrades a provider on evidence.
 func (h *ChatHandler) strategyBreakerState(model string) string {
-	prefix, _, ok := strings.Cut(model, "/")
-	if !ok || h.Resilience == nil {
+	if h == nil || h.Resilience == nil {
 		return ""
 	}
-	return string(h.Resilience.BreakerStatus(prefix).State)
+	provider := ""
+	if prefix, _, ok := strings.Cut(model, "/"); ok {
+		provider = prefix
+	} else if info := h.resolveModelEntry(model); info != nil {
+		provider = info.Provider
+	}
+	if provider == "" {
+		return ""
+	}
+	canonical := providers.ResolveAlias(provider)
+	return string(h.Resilience.BreakerStatus(canonical).State)
 }
 
 // strategyCostPer1M resolves one model's blended per-million-token price.
